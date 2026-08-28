@@ -40,6 +40,10 @@ class Config:
     WEATHER_API_KEY: str = os.environ.get("WEATHER_API_KEY", "")
     # Seconds to wait before aborting a weather API request.
     WEATHER_API_TIMEOUT: int = int(os.environ.get("WEATHER_API_TIMEOUT", "10"))
+    # Seconds between consecutive weather collection cycles (default 15 min).
+    WEATHER_COLLECTION_INTERVAL: int = int(
+        os.environ.get("WEATHER_COLLECTION_INTERVAL", "900")
+    )
 
 
 class DevelopmentConfig(Config):

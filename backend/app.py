@@ -27,6 +27,12 @@ def create_app(config_name="default"):
         db.create_all()
 
     # ------------------------------------------------------------------ #
+    # Routes                                                               #
+    # ------------------------------------------------------------------ #
+    from routes.risk import risk_bp
+    app.register_blueprint(risk_bp)
+
+    # ------------------------------------------------------------------ #
     # Health-check endpoint                                                #
     # ------------------------------------------------------------------ #
     @app.route("/api/health", methods=["GET"])

@@ -45,6 +45,19 @@ class Config:
         os.environ.get("WEATHER_COLLECTION_INTERVAL", "900")
     )
 
+    # ---------------------------------------------------------------------- #
+    # Heatwave Risk Thresholds (Prototype v0.6)                              #
+    # ---------------------------------------------------------------------- #
+    HEATWAVE_RISK_THRESHOLDS = {
+        "TEMP_MIN": 32.0,           # Minimum temp (°C) to start scoring
+        "TEMP_MODERATE": 35.0,      # Temp for moderate base risk
+        "TEMP_HIGH": 38.0,          # Temp for high base risk
+        "TEMP_EXTREME": 42.0,       # Temp for extreme base risk
+        "HUMIDITY_HIGH": 60.0,      # Humidity % adding moderate risk
+        "HUMIDITY_EXTREME": 80.0,   # Humidity % adding high risk
+        "WIND_STAGNANT": 5.0,       # Wind speed (km/h) increasing risk
+        "WIND_BREEZE": 20.0,        # Wind speed (km/h) reducing risk
+    }
 
 class DevelopmentConfig(Config):
     """Local development configuration."""

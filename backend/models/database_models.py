@@ -28,6 +28,10 @@ class Area(db.Model):
         "WeatherObservation",
         back_populates="area",
     )
+    forecast_observations = db.relationship(
+        "ForecastObservation",
+        back_populates="area",
+    )
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Area id={self.id} name={self.name!r}>"
@@ -122,4 +126,34 @@ class HeatwaveRiskAssessment(db.Model):
             f"<HeatwaveRiskAssessment id={self.id} "
             f"observation_id={self.weather_observation_id} "
             f"level={self.risk_level!r}>"
+        )
+
+
+class ForecastObservation(db.Model):
+    """A provider forecast for one Area at a future provider timestamp."""
+
+    __tablename__ = "forecast_observation"
+    __table_args__ = (
+        db.UniqueConstraint("area_id", "forecast_timestamp", name="uq_forecast_area_timestamp"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    area_id = db.Column(db.Integer, db.ForeignKey("area.id"), nullable=False)
+    forecast_timestamp = db.Column(db.Text, nullable=False)
+    temperature = db.Column(db.Float, nullable=True)
+    humidity = db.Column(db.Float, nullable=True)
+    wind_speed = db.Column(db.Float, nullable=True)
+    precipitation = db.Column(db.Float, nullable=True)
+    ingested_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=db.func.now(),
+    )
+
+    area = db.relationship("Area", back_populates="forecast_observations")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<ForecastObservation id={self.id} area_id={self.area_id} "
+            f"timestamp={self.forecast_timestamp!r}>"
         )

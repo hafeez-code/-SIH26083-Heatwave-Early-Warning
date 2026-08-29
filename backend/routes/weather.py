@@ -1,8 +1,19 @@
 """Historical, persisted weather observation API routes."""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
-from models.database_models import Area, WeatherObservation, db
+from models.database_models import Area, ForecastObservation, WeatherObservation, db
+from services.data_ingestion import (
+    WeatherAPIError,
+    WeatherAPINetworkError,
+    WeatherAPITimeoutError,
+    WeatherDataError,
+)
+from services.forecast_ingestion import (
+    fetch_forecast,
+    persist_forecasts,
+    prepare_forecast_features,
+)
 
 weather_bp = Blueprint("weather_bp", __name__)
 
@@ -18,6 +29,18 @@ def _observation_data(observation: WeatherObservation) -> dict:
         "humidity": observation.humidity,
         "wind_speed": observation.wind_speed,
         "precipitation": observation.precipitation,
+    }
+
+
+def _forecast_data(forecast: ForecastObservation) -> dict:
+    return {
+        "id": forecast.id,
+        "area_id": forecast.area_id,
+        "forecast_timestamp": forecast.forecast_timestamp,
+        "temperature": forecast.temperature,
+        "humidity": forecast.humidity,
+        "wind_speed": forecast.wind_speed,
+        "precipitation": forecast.precipitation,
     }
 
 
@@ -66,3 +89,56 @@ def weather_history():
         "status": "success",
         "data": {"area_id": area.id, "observations": [_observation_data(item) for item in observations]},
     })
+
+
+@weather_bp.route("/api/weather/forecast", methods=["GET"])
+def area_forecast():
+    """Fetch or retrieve hourly forecasts using authoritative Area coordinates."""
+    area, error = _requested_area()
+    if error:
+        return error
+
+    if request.args.get("stored", "false").lower() == "true":
+        records = (
+            ForecastObservation.query.filter_by(area_id=area.id)
+            .order_by(ForecastObservation.forecast_timestamp.asc(), ForecastObservation.id.asc())
+            .all()
+        )
+        if not records:
+            return jsonify({"status": "error", "message": "No stored forecast found for this area."}), 404
+        return jsonify({
+            "status": "success",
+            "data": {
+                "area_id": area.id,
+                "forecasts": [_forecast_data(record) for record in records],
+                "features": prepare_forecast_features(records),
+            },
+        })
+
+    try:
+        forecasts = fetch_forecast(
+            latitude=area.latitude,
+            longitude=area.longitude,
+            base_url=current_app.config["WEATHER_API_BASE_URL"],
+            api_key=current_app.config.get("WEATHER_API_KEY", ""),
+            timeout=current_app.config.get("WEATHER_API_TIMEOUT", 10),
+        )
+        records = persist_forecasts(forecasts, area.id, db.session)
+        db.session.commit()
+        records.sort(key=lambda record: (record.forecast_timestamp, record.id))
+        return jsonify({
+            "status": "success",
+            "data": {
+                "area_id": area.id,
+                "forecasts": [_forecast_data(record) for record in records],
+                "features": prepare_forecast_features(records),
+            },
+        })
+    except WeatherAPITimeoutError:
+        return jsonify({"status": "error", "message": "Forecast provider request timed out."}), 504
+    except (WeatherAPIError, WeatherAPINetworkError, WeatherDataError) as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"Forecast provider error: {exc}"}), 502
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "An unexpected internal error occurred."}), 500

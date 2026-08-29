@@ -86,7 +86,7 @@ def _level_rank(level: AlertLevel) -> int:
 # --------------------------------------------------------------------------- #
 
 
-def _dedupe_key(area_id: int, alert_level: AlertLevel, event_timestamp: str) -> str:
+def _dedupe_key(area_id: int, alert_level: AlertLevel, event_timestamp: str, source: str = "rule") -> str:
     """Return a key that suppresses duplicate alerts per 6h window.
 
     Re-evaluating the same area and alert severity within a six-hour
@@ -106,7 +106,7 @@ def _dedupe_key(area_id: int, alert_level: AlertLevel, event_timestamp: str) -> 
             hour=bucket_hour, minute=0, second=0, microsecond=0
         )
         bucket = parsed.isoformat()
-    return f"{int(area_id)}::{alert_level}::{bucket}"
+    return f"{int(area_id)}::{alert_level}::{bucket}::{source}"
 
 
 class AlertStore:
@@ -280,7 +280,7 @@ def evaluate_alert(
         factors=risk_result.contributing_factors,
         source="rule",
     )
-    dedupe_key = _dedupe_key(area_id, alert_level, risk_result.timestamp)
+    dedupe_key = _dedupe_key(area_id, alert_level, risk_result.timestamp, source="rule")
     active_store = store if store is not None else get_default_store()
     return active_store.put(alert, dedupe_key)
 
@@ -313,9 +313,61 @@ def evaluate_alert_from_risk_assessment(
         factors=list(factors) if factors is not None else [],
         source="rule",
     )
-    dedupe_key = _dedupe_key(area_id, alert_level, str(timestamp))
+    dedupe_key = _dedupe_key(area_id, alert_level, str(timestamp), source="rule")
     active_store = store if store is not None else get_default_store()
     return active_store.put(alert, dedupe_key)
+
+
+def evaluate_forecast_alert_from_risk_assessment(
+    area_id: int,
+    risk_level: str,
+    risk_score: Optional[int],
+    *,
+    timestamp: str,
+    factors: Optional[Iterable[str]] = None,
+    store: Optional[AlertStore] = None,
+) -> Optional[Alert]:
+    """Evaluate deterministic risk for a future forecast observation.
+
+    Like evaluate_alert_from_risk_assessment, but explicitly identifies
+    the alert as a forecast projection to avoid confusing it with
+    real-time deterministic risk.
+    """
+    alert_level = _map_risk_level(risk_level)
+    if alert_level is None:
+        return None
+
+    alert = _build_alert(
+        area_id=area_id,
+        alert_level=alert_level,
+        risk_level=str(risk_level),
+        risk_score=None if risk_score is None else int(risk_score),
+        timestamp=str(timestamp),
+        factors=list(factors) if factors is not None else [],
+        source="forecast_rule",
+    )
+
+    # Prefix the message so humans know it's a forecast
+    updated_message = f"Forecast: {alert.message}"
+
+    # We must construct a new Alert because it's frozen
+    forecast_alert = Alert(
+        alert_id=alert.alert_id,
+        area_id=alert.area_id,
+        level=alert.level,
+        risk_level=alert.risk_level,
+        risk_score=alert.risk_score,
+        message=updated_message,
+        timestamp=alert.timestamp,
+        raised_at_utc=alert.raised_at_utc,
+        active=alert.active,
+        factors=list(alert.factors),
+        source=alert.source,
+    )
+
+    dedupe_key = _dedupe_key(area_id, alert_level, str(timestamp), source="forecast_rule")
+    active_store = store if store is not None else get_default_store()
+    return active_store.put(forecast_alert, dedupe_key)
 
 
 def evaluate_alert_from_prediction(
@@ -366,7 +418,57 @@ def evaluate_alert_from_prediction(
         factors=[f"ML probability {probability:.3f}"],
         source="ml",
     )
-    dedupe_key = _dedupe_key(prediction.area_id, alert_level, prediction.forecast_timestamp)
+    dedupe_key = _dedupe_key(prediction.area_id, alert_level, str(prediction.forecast_timestamp), source="ml")
+    active_store = store if store is not None else get_default_store()
+    return active_store.put(alert, dedupe_key)
+
+
+def evaluate_forecast_alert_from_prediction(
+    prediction: PredictionResult,
+    *,
+    warning_threshold: float = 0.80,
+    watch_threshold: float = 0.55,
+    store: Optional[AlertStore] = None,
+) -> Optional[Alert]:
+    """Evaluate an ML prediction for a future forecast observation.
+
+    Like evaluate_alert_from_prediction, but explicitly identifies
+    the alert as a forecast projection. Preserves source="ml".
+    """
+    if prediction.probability is None or prediction.task != "classification":
+        return None
+    probability = float(prediction.probability)
+    if probability >= warning_threshold:
+        alert_level: AlertLevel = "WARNING"
+        risk_level_display = "ML_HIGH"
+        message = (
+            f"Forecast ML model predicts elevated heatwave event probability ({probability:.0%}) "
+            f"for Area {prediction.area_id} at {prediction.forecast_timestamp}."
+        )
+    elif probability >= watch_threshold:
+        alert_level = "WATCH"
+        risk_level_display = "ML_MODERATE"
+        message = (
+            f"Forecast ML model flags possible heatwave conditions ({probability:.0%}) "
+            f"for Area {prediction.area_id} at {prediction.forecast_timestamp}."
+        )
+    else:
+        return None
+
+    alert = Alert(
+        alert_id=str(uuid.uuid4()),
+        area_id=int(prediction.area_id),
+        level=alert_level,
+        risk_level=risk_level_display,
+        risk_score=None,
+        message=message,
+        timestamp=str(prediction.forecast_timestamp),
+        raised_at_utc=_now_utc_iso(),
+        active=True,
+        factors=[f"ML probability {probability:.3f}"],
+        source="ml",
+    )
+    dedupe_key = _dedupe_key(prediction.area_id, alert_level, str(prediction.forecast_timestamp), source="ml")
     active_store = store if store is not None else get_default_store()
     return active_store.put(alert, dedupe_key)
 

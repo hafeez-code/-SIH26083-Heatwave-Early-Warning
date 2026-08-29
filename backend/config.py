@@ -58,6 +58,34 @@ class Config:
     ML_ARTIFACT_VERSION: str = os.environ.get("ML_ARTIFACT_VERSION", "v0.16")
 
     # ---------------------------------------------------------------------- #
+    # Development CORS (SIH26083 v0.17 prototype only)                       #
+    # ---------------------------------------------------------------------- #
+    # Enable permissive development CORS for React/Vite frontends running on
+    # localhost.  This is clearly marked as prototype/dev behaviour and is
+    # not intended for production deployments.  Set explicitly to ``false``
+    # to disable.
+    DEV_CORS_ENABLED: bool = os.environ.get("DEV_CORS_ENABLED", "true").lower() not in (
+        "false",
+        "0",
+        "no",
+        "off",
+    )
+
+    # ---------------------------------------------------------------------- #
+    # Weather scheduler lifecycle (SIH26083 v0.17 demo glue)                 #
+    # ---------------------------------------------------------------------- #
+    # When ``true`` the application factory will start one WeatherScheduler
+    # per configured Area after the database tables are ready.  Defaults to
+    # ``false`` so pytest and other test-style app creations never spawn
+    # background threads unexpectedly.  Flask's reloader can double-process
+    # start-up; use ``flask run --no-reload`` or rely on the WERKZEUG_RUN_MAIN
+    # guard inside create_app() to avoid duplicate scheduler threads.
+    WEATHER_SCHEDULER_ENABLED: bool = (
+        os.environ.get("WEATHER_SCHEDULER_ENABLED", "false").lower()
+        in ("true", "1", "yes", "on")
+    )
+
+    # ---------------------------------------------------------------------- #
     # Heatwave Risk Thresholds (Prototype v0.6)                              #
     # ---------------------------------------------------------------------- #
     HEATWAVE_RISK_THRESHOLDS = {

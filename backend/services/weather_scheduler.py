@@ -118,9 +118,11 @@ class WeatherScheduler:
             )
             if self.area_id is None:
                 # Preserve the v0.8 call shape for existing integrations.
-                persist_observation_and_risk(observation, self.db_session)
+                _weather, risk_record = persist_observation_and_risk(
+                    observation, self.db_session
+                )
             else:
-                persist_observation_and_risk(
+                _weather, risk_record = persist_observation_and_risk(
                     observation, self.db_session, area_id=self.area_id
                 )
             self.db_session.commit()
@@ -130,6 +132,42 @@ class WeatherScheduler:
                 observation.longitude,
                 observation.timestamp,
             )
+
+            # v0.17: project the persisted risk into the alert service.
+            # Imported inside the method to avoid circular imports at
+            # module load time; the alert service depends on heatwave_risk
+            # types that risk_pipeline also imports.
+            if self.area_id is not None:
+                try:
+                    import json as _json
+
+                    from services.alert_service import (
+                        evaluate_alert_from_risk_assessment,
+                    )
+
+                    factors_raw = risk_record.contributing_factors
+                    factors = (
+                        _json.loads(factors_raw)
+                        if isinstance(factors_raw, str)
+                        else list(factors_raw or [])
+                    )
+                    evaluate_alert_from_risk_assessment(
+                        area_id=self.area_id,
+                        risk_level=risk_record.risk_level,
+                        risk_score=risk_record.risk_score,
+                        timestamp=observation.timestamp,
+                        factors=factors,
+                    )
+                except Exception:  # noqa: BLE001
+                    # Alert evaluation must never cause an otherwise
+                    # successful persistence cycle to report failure.
+                    logger.warning(
+                        "WeatherScheduler: alert evaluation failed for area %s; "
+                        "observation and risk were persisted successfully.",
+                        self.area_id,
+                        exc_info=True,
+                    )
+
             return True
 
         except IngestionError as exc:

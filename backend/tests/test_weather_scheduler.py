@@ -115,7 +115,7 @@ def in_memory_db():
 
 class TestCollectOnce:
 
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_calls_fetch_weather_with_correct_args(
         self, mock_fetch, mock_pipeline, scheduler, mock_session
@@ -131,7 +131,7 @@ class TestCollectOnce:
             timeout=5,
         )
 
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_passes_observation_to_risk_pipeline(
         self, mock_fetch, mock_pipeline, scheduler, mock_session
@@ -141,7 +141,7 @@ class TestCollectOnce:
 
         mock_pipeline.assert_called_once_with(_SAMPLE_OBS, mock_session)
 
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_commits_session_on_success(
         self, mock_fetch, mock_pipeline, scheduler, mock_session
@@ -151,7 +151,7 @@ class TestCollectOnce:
 
         mock_session.commit.assert_called_once()
 
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_returns_true_on_success(
         self, mock_fetch, mock_pipeline, scheduler
@@ -194,7 +194,7 @@ class TestCollectOnce:
         result = scheduler.collect_once()
         assert result is False
 
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_no_commit_after_ingestion_error(
         self, mock_fetch, mock_pipeline, scheduler, mock_session
@@ -213,7 +213,7 @@ class TestCollectOnce:
 class TestSchedulerThreading:
 
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     def test_start_creates_live_thread(self, mock_pipeline, mock_fetch, scheduler):
         """Test 8 – start() spawns a background thread; is_running is True."""
         assert not scheduler.is_running
@@ -222,7 +222,7 @@ class TestSchedulerThreading:
         scheduler.stop()
 
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     def test_stop_terminates_thread(self, mock_pipeline, mock_fetch, scheduler):
         """Test 8 / 11 – stop() terminates the thread cleanly."""
         scheduler.start()
@@ -234,7 +234,7 @@ class TestSchedulerThreading:
         assert not scheduler.is_running
 
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     def test_double_start_does_not_spawn_second_thread(
         self, mock_pipeline, mock_fetch, scheduler
     ):
@@ -271,7 +271,7 @@ class TestSchedulerThreading:
 
 class TestIntervalRespected:
 
-    @patch("services.weather_scheduler.persist_observation_and_risk")
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_configured_interval_passed_to_event_wait(
         self, mock_fetch, mock_pipeline, mock_session

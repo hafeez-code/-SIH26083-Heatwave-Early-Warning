@@ -246,7 +246,7 @@ def fetch_weather(
     return observation
 
 
-def save_observation(observation: NormalisedObservation, db_session) -> None:
+def save_observation(observation: NormalisedObservation, db_session):
     """Persist a NormalisedObservation to the database.
 
     Parameters
@@ -273,3 +273,4 @@ def save_observation(observation: NormalisedObservation, db_session) -> None:
     )
     db_session.add(record)
     logger.debug("Staged WeatherObservation for (%.4f, %.4f).", observation.latitude, observation.longitude)
+    return record

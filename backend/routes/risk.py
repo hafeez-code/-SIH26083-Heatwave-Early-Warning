@@ -3,7 +3,10 @@ risk.py – Risk assessment API routes for SIH26083.
 
 Sprint 7 (v0.7): REST API endpoint for heatwave risk calculation.
 """
+import json
+
 from flask import Blueprint, request, jsonify, current_app
+from models.database_models import HeatwaveRiskAssessment, WeatherObservation
 from services.data_ingestion import (
     fetch_weather, 
     WeatherAPITimeoutError, 
@@ -14,6 +17,47 @@ from services.data_ingestion import (
 from services.heatwave_risk import calculate_risk
 
 risk_bp = Blueprint("risk_bp", __name__)
+
+
+def _stored_risk_response(lat: float, lon: float):
+    """Return the newest stored assessment at the requested coordinates."""
+    record = (
+        HeatwaveRiskAssessment.query.join(WeatherObservation)
+        .filter(
+            WeatherObservation.latitude == lat,
+            WeatherObservation.longitude == lon,
+        )
+        .order_by(HeatwaveRiskAssessment.created_at.desc(), HeatwaveRiskAssessment.id.desc())
+        .first()
+    )
+    if record is None:
+        return jsonify({
+            "status": "error",
+            "message": "No stored risk assessment found for this location.",
+        }), 404
+
+    observation = record.weather_observation
+    return jsonify({
+        "status": "success",
+        "data": {
+            "location": {
+                "latitude": observation.latitude,
+                "longitude": observation.longitude,
+            },
+            "weather": {
+                "timestamp": observation.timestamp,
+                "temperature": observation.temperature,
+                "humidity": observation.humidity,
+                "wind_speed": observation.wind_speed,
+                "precipitation": observation.precipitation,
+            },
+            "risk": {
+                "score": record.risk_score,
+                "level": record.risk_level,
+                "contributing_factors": json.loads(record.contributing_factors),
+            },
+        },
+    })
 
 @risk_bp.route("/api/risk", methods=["GET"])
 def get_risk():
@@ -33,6 +77,9 @@ def get_risk():
         return jsonify({"status": "error", "message": "Latitude must be between -90 and 90."}), 400
     if not (-180 <= lon <= 180):
         return jsonify({"status": "error", "message": "Longitude must be between -180 and 180."}), 400
+
+    if request.args.get("stored", "false").lower() == "true":
+        return _stored_risk_response(lat, lon)
 
     try:
         # Obtain weather data using existing config

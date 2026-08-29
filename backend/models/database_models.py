@@ -62,9 +62,54 @@ class WeatherObservation(db.Model):
         server_default=db.func.now(),
     )
 
+    # One deterministic assessment is produced for each successfully
+    # persisted observation.  The database constraint prevents duplicate
+    # assessments when a collection cycle is retried.
+    risk_assessment = db.relationship(
+        "HeatwaveRiskAssessment",
+        back_populates="weather_observation",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:  # pragma: no cover
         return (
             f"<WeatherObservation id={self.id} "
             f"lat={self.latitude} lon={self.longitude} "
             f"ts={self.timestamp!r}>"
+        )
+
+
+class HeatwaveRiskAssessment(db.Model):
+    """The deterministic heatwave risk calculated from one observation."""
+
+    __tablename__ = "heatwave_risk_assessment"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    weather_observation_id = db.Column(
+        db.Integer,
+        db.ForeignKey("weather_observation.id"),
+        nullable=False,
+        unique=True,
+    )
+    risk_score = db.Column(db.Integer, nullable=False)
+    risk_level = db.Column(db.String(20), nullable=False)
+    # JSON text keeps the schema portable to the project's SQLite database.
+    contributing_factors = db.Column(db.Text, nullable=False)
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=db.func.now(),
+    )
+
+    weather_observation = db.relationship(
+        "WeatherObservation",
+        back_populates="risk_assessment",
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<HeatwaveRiskAssessment id={self.id} "
+            f"observation_id={self.weather_observation_id} "
+            f"level={self.risk_level!r}>"
         )

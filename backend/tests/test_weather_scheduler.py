@@ -110,15 +110,15 @@ def in_memory_db():
 
 
 # ---------------------------------------------------------------------------
-# collect_once() unit tests (mocked fetch & save)
+# collect_once() unit tests (mocked fetch & pipeline)
 # ---------------------------------------------------------------------------
 
 class TestCollectOnce:
 
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_calls_fetch_weather_with_correct_args(
-        self, mock_fetch, mock_save, scheduler, mock_session
+        self, mock_fetch, mock_pipeline, scheduler, mock_session
     ):
         """Test 1 – collect_once() calls fetch_weather with configured params."""
         scheduler.collect_once()
@@ -131,30 +131,30 @@ class TestCollectOnce:
             timeout=5,
         )
 
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
-    def test_passes_observation_to_save_observation(
-        self, mock_fetch, mock_save, scheduler, mock_session
+    def test_passes_observation_to_risk_pipeline(
+        self, mock_fetch, mock_pipeline, scheduler, mock_session
     ):
-        """Test 2 – The fetched observation is passed to save_observation."""
+        """The fetched observation is passed to the risk pipeline."""
         scheduler.collect_once()
 
-        mock_save.assert_called_once_with(_SAMPLE_OBS, mock_session)
+        mock_pipeline.assert_called_once_with(_SAMPLE_OBS, mock_session)
 
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_commits_session_on_success(
-        self, mock_fetch, mock_save, scheduler, mock_session
+        self, mock_fetch, mock_pipeline, scheduler, mock_session
     ):
         """Test 3 – The DB session is committed after a successful cycle."""
         scheduler.collect_once()
 
         mock_session.commit.assert_called_once()
 
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_returns_true_on_success(
-        self, mock_fetch, mock_save, scheduler
+        self, mock_fetch, mock_pipeline, scheduler
     ):
         """Test 4 – collect_once() returns True on success."""
         result = scheduler.collect_once()
@@ -194,13 +194,13 @@ class TestCollectOnce:
         result = scheduler.collect_once()
         assert result is False
 
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_no_commit_after_ingestion_error(
-        self, mock_fetch, mock_save, scheduler, mock_session
+        self, mock_fetch, mock_pipeline, scheduler, mock_session
     ):
         """A failed cycle must not commit (rollback only)."""
-        mock_save.side_effect = IngestionError("db error")
+        mock_pipeline.side_effect = IngestionError("pipeline error")
         scheduler.collect_once()
         mock_session.commit.assert_not_called()
         mock_session.rollback.assert_called_once()
@@ -212,20 +212,18 @@ class TestCollectOnce:
 
 class TestSchedulerThreading:
 
-    @patch("services.weather_scheduler.fetch_weather",
-           return_value=_SAMPLE_OBS)
-    @patch("services.weather_scheduler.save_observation")
-    def test_start_creates_live_thread(self, mock_save, mock_fetch, scheduler):
+    @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
+    @patch("services.weather_scheduler.persist_observation_and_risk")
+    def test_start_creates_live_thread(self, mock_pipeline, mock_fetch, scheduler):
         """Test 8 – start() spawns a background thread; is_running is True."""
         assert not scheduler.is_running
         scheduler.start()
         assert scheduler.is_running
         scheduler.stop()
 
-    @patch("services.weather_scheduler.fetch_weather",
-           return_value=_SAMPLE_OBS)
-    @patch("services.weather_scheduler.save_observation")
-    def test_stop_terminates_thread(self, mock_save, mock_fetch, scheduler):
+    @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
+    @patch("services.weather_scheduler.persist_observation_and_risk")
+    def test_stop_terminates_thread(self, mock_pipeline, mock_fetch, scheduler):
         """Test 8 / 11 – stop() terminates the thread cleanly."""
         scheduler.start()
         scheduler.stop(timeout=2.0)
@@ -235,11 +233,10 @@ class TestSchedulerThreading:
         """Test 9 – is_running is False before start() is called."""
         assert not scheduler.is_running
 
-    @patch("services.weather_scheduler.fetch_weather",
-           return_value=_SAMPLE_OBS)
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     def test_double_start_does_not_spawn_second_thread(
-        self, mock_save, mock_fetch, scheduler
+        self, mock_pipeline, mock_fetch, scheduler
     ):
         """Test 12 – Calling start() twice uses only one thread."""
         scheduler.start()
@@ -249,11 +246,10 @@ class TestSchedulerThreading:
         assert thread_first is thread_second
         scheduler.stop()
 
-    @patch("services.weather_scheduler.save_observation")
     @patch("services.weather_scheduler.fetch_weather",
            side_effect=WeatherAPIError("API down"))
     def test_scheduler_continues_after_failed_cycle(
-        self, mock_fetch, mock_save, mock_session
+        self, mock_fetch, mock_session
     ):
         """Test 8 – A failed cycle must NOT stop the scheduler thread."""
         sched = WeatherScheduler(
@@ -275,10 +271,10 @@ class TestSchedulerThreading:
 
 class TestIntervalRespected:
 
-    @patch("services.weather_scheduler.save_observation")
+    @patch("services.weather_scheduler.persist_observation_and_risk")
     @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
     def test_configured_interval_passed_to_event_wait(
-        self, mock_fetch, mock_save, mock_session
+        self, mock_fetch, mock_pipeline, mock_session
     ):
         """Test 3 (interval) – The scheduler waits for exactly `interval` seconds."""
         custom_interval = 300
@@ -341,6 +337,8 @@ class TestCollectOnceEndToEnd:
         assert row.longitude == pytest.approx(LON)
         assert row.timestamp == "2026-08-28T12:00"
         assert row.temperature == pytest.approx(38.5)
+        assert row.risk_assessment is not None
+        assert row.risk_assessment.weather_observation_id == row.id
 
     @patch("services.weather_scheduler.fetch_weather")
     def test_multiple_cycles_accumulate_rows(self, mock_fetch, in_memory_db):
@@ -376,3 +374,4 @@ class TestCollectOnceEndToEnd:
         rows = WeatherObservation.query.order_by(WeatherObservation.timestamp).all()
         assert len(rows) == 3
         assert [r.timestamp for r in rows] == timestamps
+        assert all(row.risk_assessment is not None for row in rows)

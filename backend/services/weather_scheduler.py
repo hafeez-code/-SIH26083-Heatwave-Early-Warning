@@ -26,13 +26,11 @@ from __future__ import annotations
 
 import logging
 import threading
+from contextlib import nullcontext
 from typing import Optional
 
-from services.data_ingestion import (
-    IngestionError,
-    fetch_weather,
-    save_observation,
-)
+from services.data_ingestion import IngestionError, fetch_weather
+from services.risk_pipeline import persist_observation_and_risk
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +69,7 @@ class WeatherScheduler:
         db_session,
         api_key: str = "",
         api_timeout: int = 10,
+        app=None,
     ) -> None:
         self.latitude = latitude
         self.longitude = longitude
@@ -79,6 +78,7 @@ class WeatherScheduler:
         self.db_session = db_session
         self.api_key = api_key
         self.api_timeout = api_timeout
+        self.app = app
 
         self._stop_event: threading.Event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -88,7 +88,7 @@ class WeatherScheduler:
     # ------------------------------------------------------------------ #
 
     def collect_once(self) -> bool:
-        """Execute one fetch → normalise → save cycle.
+        """Execute one fetch → persist observation → calculate → persist risk cycle.
 
         Returns
         -------
@@ -96,12 +96,16 @@ class WeatherScheduler:
             ``True`` if the observation was fetched and staged successfully,
             ``False`` if an error occurred (already logged; does not raise).
 
-        Notes
-        -----
-        The caller is responsible for committing the session after a
-        ``True`` return if they want the row to be durable.  The scheduler
-        loop commits automatically; external callers must commit manually.
+        When ``app`` is supplied, its application context is entered for the
+        entire cycle.  This makes Flask-SQLAlchemy session use safe from the
+        scheduler's background thread.
         """
+        context = self.app.app_context() if self.app is not None else nullcontext()
+        with context:
+            return self._collect_once()
+
+    def _collect_once(self) -> bool:
+        """Run one cycle while its required application context is active."""
         try:
             observation = fetch_weather(
                 latitude=self.latitude,
@@ -110,10 +114,10 @@ class WeatherScheduler:
                 api_key=self.api_key,
                 timeout=self.api_timeout,
             )
-            save_observation(observation, self.db_session)
+            persist_observation_and_risk(observation, self.db_session)
             self.db_session.commit()
             logger.info(
-                "WeatherScheduler: observation stored for (%.4f, %.4f) at %s.",
+                "WeatherScheduler: observation and risk stored for (%.4f, %.4f) at %s.",
                 observation.latitude,
                 observation.longitude,
                 observation.timestamp,

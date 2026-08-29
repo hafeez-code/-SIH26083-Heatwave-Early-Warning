@@ -134,14 +134,13 @@ def persist_forecasts(
 def prepare_forecast_features(
     records: Iterable[NormalisedForecast | ForecastObservation],
 ) -> list[dict]:
-    """Return deterministic, model-ready feature dictionaries for v0.11."""
-    return [
-        {
-            "forecast_timestamp": record.forecast_timestamp,
-            "temperature": record.temperature,
-            "humidity": record.humidity,
-            "wind_speed": record.wind_speed,
-            "precipitation": record.precipitation,
-        }
-        for record in records
-    ]
+    """Return the compatibility-preserving v0.10 raw feature format.
+
+    New derived forecast features are intentionally exposed through
+    ``services.forecast_features.build_forecast_features``.  Keeping this
+    established helper raw prevents a v0.11 engineering change from altering
+    the existing forecast API contract.
+    """
+    from services.forecast_features import raw_forecast_features
+
+    return raw_forecast_features(records)

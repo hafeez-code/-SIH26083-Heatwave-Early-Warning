@@ -42,9 +42,11 @@ def create_app(config_name="default"):
     from routes.risk import risk_bp
     from routes.areas import areas_bp
     from routes.weather import weather_bp
+    from routes.prediction import prediction_bp
     app.register_blueprint(risk_bp)
     app.register_blueprint(areas_bp)
     app.register_blueprint(weather_bp)
+    app.register_blueprint(prediction_bp)
 
     # ------------------------------------------------------------------ #
     # Health-check endpoint                                                #

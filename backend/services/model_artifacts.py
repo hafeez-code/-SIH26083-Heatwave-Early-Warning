@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import joblib
 from sklearn.pipeline import Pipeline
@@ -71,6 +71,74 @@ def load_training_artifact(path: str | Path) -> dict[str, Any]:
     if "scaler" not in pipeline.named_steps or "model" not in pipeline.named_steps:
         raise ArtifactError("Saved pipeline is missing preprocessing or estimator steps.")
     return payload
+
+
+def resolve_artifact_path(
+    artifact_dir: str | Path,
+    *,
+    version: str,
+    task: TaskType,
+    target_column: str,
+    fallback_version: Optional[str] = None,
+) -> Path:
+    """Resolve a saved artifact path by convention, with optional version fallback.
+
+    Search order:
+    1. Exact match for the requested (version, task, target_column).
+    2. If ``fallback_version`` is set, try that version with the same
+       task and target column.
+    3. Otherwise, raise :class:`ArtifactError`.
+
+    The returned path is guaranteed to exist on disk.
+    """
+    directory = Path(artifact_dir)
+    joblib_path, _ = artifact_paths(directory, version=version, task=task, target_column=target_column)
+    if joblib_path.exists():
+        return joblib_path
+    if fallback_version is not None:
+        fallback_path, _ = artifact_paths(
+            directory, version=fallback_version, task=task, target_column=target_column
+        )
+        if fallback_path.exists():
+            return fallback_path
+    raise ArtifactError(
+        f"No artifact found at {joblib_path}"
+        + (
+            f" or {artifact_stem(version=fallback_version, task=task, target_column=target_column)}.joblib"
+            if fallback_version is not None
+            else ""
+        )
+        + "."
+    )
+
+
+def list_artifacts(artifact_dir: str | Path) -> list[dict[str, Any]]:
+    """Return metadata summary for every ``*.joblib`` artifact in ``artifact_dir``.
+
+    Each entry includes the file paths and, when present, the contract fields
+    read from the artifact payload.  Missing or corrupt artifacts are skipped
+    with no exception so partial directories remain browsable.
+    """
+    directory = Path(artifact_dir)
+    results: list[dict[str, Any]] = []
+    if not directory.exists():
+        return results
+    for joblib_path in sorted(directory.glob("*.joblib")):
+        meta_path = joblib_path.parent / (joblib_path.stem + ".meta.json")
+        entry: dict[str, Any] = {
+            "artifact_path": str(joblib_path),
+            "meta_path": str(meta_path) if meta_path.exists() else None,
+        }
+        try:
+            payload = joblib.load(joblib_path)
+        except Exception:
+            results.append(entry)
+            continue
+        for key in ("artifact_version", "task", "target_column", "feature_names"):
+            if key in payload:
+                entry[key] = payload[key]
+        results.append(entry)
+    return results
 
 
 def _metadata_json(metadata: dict[str, Any]) -> str:

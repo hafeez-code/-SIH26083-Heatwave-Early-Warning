@@ -55,7 +55,7 @@ class Config:
         "ML_ARTIFACT_DIR",
         os.path.join(_BASE_DIR, "artifacts", "models"),
     )
-    ML_ARTIFACT_VERSION: str = os.environ.get("ML_ARTIFACT_VERSION", "v0.15")
+    ML_ARTIFACT_VERSION: str = os.environ.get("ML_ARTIFACT_VERSION", "v0.16")
 
     # ---------------------------------------------------------------------- #
     # Heatwave Risk Thresholds (Prototype v0.6)                              #

@@ -48,6 +48,18 @@ class Config:
     # ---------------------------------------------------------------------- #
     # Heatwave Risk Thresholds (Prototype v0.6)                              #
     # ---------------------------------------------------------------------- #
+    # ---------------------------------------------------------------------- #
+    # ML artifacts – generated files are gitignored; never store credentials. #
+    # ---------------------------------------------------------------------- #
+    ML_ARTIFACT_DIR: str = os.environ.get(
+        "ML_ARTIFACT_DIR",
+        os.path.join(_BASE_DIR, "artifacts", "models"),
+    )
+    ML_ARTIFACT_VERSION: str = os.environ.get("ML_ARTIFACT_VERSION", "v0.15")
+
+    # ---------------------------------------------------------------------- #
+    # Heatwave Risk Thresholds (Prototype v0.6)                              #
+    # ---------------------------------------------------------------------- #
     HEATWAVE_RISK_THRESHOLDS = {
         "TEMP_MIN": 32.0,           # Minimum temp (°C) to start scoring
         "TEMP_MODERATE": 35.0,      # Temp for moderate base risk

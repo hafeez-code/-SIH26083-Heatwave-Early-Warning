@@ -1,3 +1,7 @@
 __pycache__/
 *.py[cod]
 *.db
+
+# Generated ML training artifacts (v0.15+)
+backend/artifacts/
+*.joblib

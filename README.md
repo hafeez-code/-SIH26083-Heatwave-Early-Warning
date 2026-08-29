@@ -27,3 +27,18 @@ inference, but v0.12 writes no model artifact.
 This is an engineering foundation only: there is no validated target or
 historical data in the current repository, so production supervised training
 and claims of predictive accuracy remain blocked.
+
+## v0.13 historical data and labels foundation
+
+Historical observations are validated, normalized, ordered by Area and time,
+and idempotently persisted through the existing `WeatherObservation` model.
+The existing v0.11 feature service remains the single source for historical
+weather feature calculations. Missing measurements remain null; invalid,
+non-finite, or physically implausible values are rejected.
+
+`HistoricalEventLabel` stores only externally supplied, independently
+observed or validated binary event labels, with source, reference, validation,
+and provenance metadata. Rule-derived `risk_score`/`risk_level` and labels
+derived from model weather features are rejected. The repository still has no
+historical weather rows or independent labels, so v0.14 training remains
+blocked until legitimate data and labels are imported.

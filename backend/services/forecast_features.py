@@ -31,7 +31,11 @@ HIGH_TEMPERATURE_THRESHOLD = 40.0
 def _value(record: object, name: str):
     """Read a forecast attribute from either an object or a mapping."""
     if isinstance(record, Mapping):
+        if name == "forecast_timestamp":
+            return record.get(name, record.get("observation_timestamp", record.get("timestamp")))
         return record.get(name)
+    if name == "forecast_timestamp":
+        return getattr(record, name, getattr(record, "observation_timestamp", getattr(record, "timestamp", None)))
     return getattr(record, name, None)
 
 

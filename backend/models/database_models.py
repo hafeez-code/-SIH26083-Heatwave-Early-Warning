@@ -32,6 +32,10 @@ class Area(db.Model):
         "ForecastObservation",
         back_populates="area",
     )
+    historical_event_labels = db.relationship(
+        "HistoricalEventLabel",
+        back_populates="area",
+    )
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Area id={self.id} name={self.name!r}>"
@@ -156,4 +160,41 @@ class ForecastObservation(db.Model):
         return (
             f"<ForecastObservation id={self.id} area_id={self.area_id} "
             f"timestamp={self.forecast_timestamp!r}>"
+        )
+
+
+class HistoricalEventLabel(db.Model):
+    """An independently supplied, validated event label for a historical Area time."""
+
+    __tablename__ = "historical_event_label"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "area_id",
+            "event_timestamp",
+            "label_name",
+            name="uq_historical_label_area_timestamp_name",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    area_id = db.Column(db.Integer, db.ForeignKey("area.id"), nullable=False)
+    event_timestamp = db.Column(db.Text, nullable=False)
+    label_name = db.Column(db.String(100), nullable=False)
+    label_value = db.Column(db.Integer, nullable=False)
+    label_source = db.Column(db.String(255), nullable=False)
+    source_reference = db.Column(db.String(255), nullable=False)
+    validation_status = db.Column(db.String(50), nullable=False)
+    provenance_type = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=db.func.now(),
+    )
+
+    area = db.relationship("Area", back_populates="historical_event_labels")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<HistoricalEventLabel id={self.id} area_id={self.area_id} "
+            f"timestamp={self.event_timestamp!r} name={self.label_name!r}>"
         )

@@ -23,14 +23,17 @@ def _as_normalised_observation(record: WeatherObservation) -> NormalisedObservat
 
 
 def persist_observation_and_risk(
-    observation: NormalisedObservation, db_session, thresholds: dict | None = None
+    observation: NormalisedObservation,
+    db_session,
+    thresholds: dict | None = None,
+    area_id: int | None = None,
 ) -> tuple[WeatherObservation, HeatwaveRiskAssessment]:
     """Stage a weather observation and its deterministic assessment.
 
     This function deliberately does not commit.  Its caller owns one atomic
     transaction so an observation is never retained without its risk record.
     """
-    weather_record = save_observation(observation, db_session)
+    weather_record = save_observation(observation, db_session, area_id=area_id)
     db_session.flush()
 
     assessment = calculate_risk(

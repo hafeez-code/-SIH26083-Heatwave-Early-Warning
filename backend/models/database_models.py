@@ -24,6 +24,11 @@ class Area(db.Model):
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
 
+    observations = db.relationship(
+        "WeatherObservation",
+        back_populates="area",
+    )
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Area id={self.id} name={self.name!r}>"
 
@@ -39,6 +44,11 @@ class WeatherObservation(db.Model):
     __tablename__ = "weather_observation"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    # The monitored Area, when this observation was collected for one.
+    # It is nullable so existing coordinate-only ingestion remains supported.
+    area_id = db.Column(db.Integer, db.ForeignKey("area.id"), nullable=True)
+    area = db.relationship("Area", back_populates="observations")
 
     # Location of the observation (from the API response, not the request)
     latitude = db.Column(db.Float, nullable=False)

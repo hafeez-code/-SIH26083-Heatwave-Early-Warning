@@ -246,7 +246,9 @@ def fetch_weather(
     return observation
 
 
-def save_observation(observation: NormalisedObservation, db_session):
+def save_observation(
+    observation: NormalisedObservation, db_session, area_id: int | None = None
+):
     """Persist a NormalisedObservation to the database.
 
     Parameters
@@ -263,6 +265,7 @@ def save_observation(observation: NormalisedObservation, db_session):
     from models.database_models import WeatherObservation  # local import avoids circular refs
 
     record = WeatherObservation(
+        area_id=area_id,
         latitude=observation.latitude,
         longitude=observation.longitude,
         timestamp=observation.timestamp,

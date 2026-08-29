@@ -6,6 +6,7 @@ Sprint 2: Database foundation (Flask-SQLAlchemy + SQLite, Area model).
 """
 
 from flask import Flask, jsonify
+from sqlalchemy import inspect
 
 from config import config
 from models.database_models import db
@@ -25,12 +26,25 @@ def create_app(config_name="default"):
     # Replace with Flask-Migrate in a later sprint before going to production.
     with app.app_context():
         db.create_all()
+        # create_all does not add columns to an existing SQLite database.
+        # This non-destructive upgrade keeps local v0.8 databases usable.
+        if db.engine.dialect.name == "sqlite":
+            columns = {column["name"] for column in inspect(db.engine).get_columns("weather_observation")}
+            if "area_id" not in columns:
+                with db.engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE weather_observation ADD COLUMN area_id INTEGER REFERENCES area(id)"
+                    )
 
     # ------------------------------------------------------------------ #
     # Routes                                                               #
     # ------------------------------------------------------------------ #
     from routes.risk import risk_bp
+    from routes.areas import areas_bp
+    from routes.weather import weather_bp
     app.register_blueprint(risk_bp)
+    app.register_blueprint(areas_bp)
+    app.register_blueprint(weather_bp)
 
     # ------------------------------------------------------------------ #
     # Health-check endpoint                                                #

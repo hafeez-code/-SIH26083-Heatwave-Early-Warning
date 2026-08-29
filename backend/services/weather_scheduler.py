@@ -70,6 +70,7 @@ class WeatherScheduler:
         api_key: str = "",
         api_timeout: int = 10,
         app=None,
+        area_id: int | None = None,
     ) -> None:
         self.latitude = latitude
         self.longitude = longitude
@@ -79,6 +80,7 @@ class WeatherScheduler:
         self.api_key = api_key
         self.api_timeout = api_timeout
         self.app = app
+        self.area_id = area_id
 
         self._stop_event: threading.Event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -114,7 +116,13 @@ class WeatherScheduler:
                 api_key=self.api_key,
                 timeout=self.api_timeout,
             )
-            persist_observation_and_risk(observation, self.db_session)
+            if self.area_id is None:
+                # Preserve the v0.8 call shape for existing integrations.
+                persist_observation_and_risk(observation, self.db_session)
+            else:
+                persist_observation_and_risk(
+                    observation, self.db_session, area_id=self.area_id
+                )
             self.db_session.commit()
             logger.info(
                 "WeatherScheduler: observation and risk stored for (%.4f, %.4f) at %s.",

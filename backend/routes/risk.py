@@ -6,7 +6,7 @@ Sprint 7 (v0.7): REST API endpoint for heatwave risk calculation.
 import json
 
 from flask import Blueprint, request, jsonify, current_app
-from models.database_models import HeatwaveRiskAssessment, WeatherObservation
+from models.database_models import Area, HeatwaveRiskAssessment, WeatherObservation, db
 from services.data_ingestion import (
     fetch_weather, 
     WeatherAPITimeoutError, 
@@ -19,48 +19,67 @@ from services.heatwave_risk import calculate_risk
 risk_bp = Blueprint("risk_bp", __name__)
 
 
-def _stored_risk_response(lat: float, lon: float):
-    """Return the newest stored assessment at the requested coordinates."""
-    record = (
-        HeatwaveRiskAssessment.query.join(WeatherObservation)
-        .filter(
-            WeatherObservation.latitude == lat,
-            WeatherObservation.longitude == lon,
-        )
-        .order_by(HeatwaveRiskAssessment.created_at.desc(), HeatwaveRiskAssessment.id.desc())
-        .first()
-    )
+def _risk_data(record: HeatwaveRiskAssessment) -> dict:
+    observation = record.weather_observation
+    return {
+        "location": {
+            "latitude": observation.latitude,
+            "longitude": observation.longitude,
+        },
+        "weather": {
+            "timestamp": observation.timestamp,
+            "temperature": observation.temperature,
+            "humidity": observation.humidity,
+            "wind_speed": observation.wind_speed,
+            "precipitation": observation.precipitation,
+        },
+        "risk": {
+            "score": record.risk_score,
+            "level": record.risk_level,
+            "contributing_factors": json.loads(record.contributing_factors),
+        },
+    }
+
+
+def _stored_risk_response(query, missing_message: str):
+    """Return the most recent stored assessment for an already-filtered query."""
+    record = query.order_by(
+        WeatherObservation.timestamp.desc(), WeatherObservation.id.desc()
+    ).first()
     if record is None:
         return jsonify({
             "status": "error",
-            "message": "No stored risk assessment found for this location.",
+            "message": missing_message,
         }), 404
+    return jsonify({"status": "success", "data": _risk_data(record)})
 
-    observation = record.weather_observation
-    return jsonify({
-        "status": "success",
-        "data": {
-            "location": {
-                "latitude": observation.latitude,
-                "longitude": observation.longitude,
-            },
-            "weather": {
-                "timestamp": observation.timestamp,
-                "temperature": observation.temperature,
-                "humidity": observation.humidity,
-                "wind_speed": observation.wind_speed,
-                "precipitation": observation.precipitation,
-            },
-            "risk": {
-                "score": record.risk_score,
-                "level": record.risk_level,
-                "contributing_factors": json.loads(record.contributing_factors),
-            },
-        },
-    })
+
+def _get_area_from_request():
+    value = request.args.get("area_id")
+    try:
+        area_id = int(value)
+    except (TypeError, ValueError):
+        return None, (jsonify({"status": "error", "message": "area_id must be an integer."}), 400)
+    area = db.session.get(Area, area_id)
+    if area is None:
+        return None, (jsonify({"status": "error", "message": "Area not found."}), 404)
+    return area, None
 
 @risk_bp.route("/api/risk", methods=["GET"])
 def get_risk():
+    if request.args.get("area_id") is not None:
+        if request.args.get("stored", "false").lower() != "true":
+            return jsonify({"status": "error", "message": "area_id requires stored=true."}), 400
+        area, error = _get_area_from_request()
+        if error:
+            return error
+        return _stored_risk_response(
+            HeatwaveRiskAssessment.query.join(WeatherObservation).filter(
+                WeatherObservation.area_id == area.id
+            ),
+            "No stored risk assessment found for this area.",
+        )
+
     lat_str = request.args.get("latitude")
     lon_str = request.args.get("longitude")
 
@@ -79,7 +98,13 @@ def get_risk():
         return jsonify({"status": "error", "message": "Longitude must be between -180 and 180."}), 400
 
     if request.args.get("stored", "false").lower() == "true":
-        return _stored_risk_response(lat, lon)
+        return _stored_risk_response(
+            HeatwaveRiskAssessment.query.join(WeatherObservation).filter(
+                WeatherObservation.latitude == lat,
+                WeatherObservation.longitude == lon,
+            ),
+            "No stored risk assessment found for this location.",
+        )
 
     try:
         # Obtain weather data using existing config
@@ -130,3 +155,27 @@ def get_risk():
     except Exception as e:
         current_app.logger.exception("Unexpected error in /api/risk")
         return jsonify({"status": "error", "message": "An unexpected internal error occurred."}), 500
+
+
+@risk_bp.route("/api/risk/history", methods=["GET"])
+def risk_history():
+    """Return persisted risk records for an Area in provider timestamp order."""
+    area, error = _get_area_from_request()
+    if error:
+        return error
+    records = (
+        HeatwaveRiskAssessment.query.join(WeatherObservation)
+        .filter(WeatherObservation.area_id == area.id)
+        .order_by(WeatherObservation.timestamp.asc(), WeatherObservation.id.asc())
+        .all()
+    )
+    return jsonify({
+        "status": "success",
+        "data": {
+            "area_id": area.id,
+            "risks": [
+                {"id": record.id, "weather_observation_id": record.weather_observation_id, **_risk_data(record)}
+                for record in records
+            ],
+        },
+    })

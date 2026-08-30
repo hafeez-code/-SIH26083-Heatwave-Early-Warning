@@ -26,6 +26,8 @@ class NormalisedForecast:
     humidity: Optional[float]
     wind_speed: Optional[float]
     precipitation: Optional[float]
+    # Solar radiation – nullable; never fabricated if provider omits it.
+    solar_radiation: Optional[float] = None  # W/m²
 
 
 def _optional_float(value: object) -> Optional[float]:
@@ -68,6 +70,7 @@ def _normalise_forecast_response(data: dict) -> list[NormalisedForecast]:
     humidity = values("relative_humidity_2m")
     wind_speed = values("wind_speed_10m")
     precipitation = values("precipitation")
+    solar_radiation = values("shortwave_radiation")  # optional provider field
     return [
         NormalisedForecast(
             forecast_timestamp=str(timestamp),
@@ -75,6 +78,7 @@ def _normalise_forecast_response(data: dict) -> list[NormalisedForecast]:
             humidity=_optional_float(humidity[index]),
             wind_speed=_optional_float(wind_speed[index]),
             precipitation=_optional_float(precipitation[index]),
+            solar_radiation=_optional_float(solar_radiation[index]),
         )
         for index, timestamp in enumerate(timestamps)
     ]
@@ -127,6 +131,7 @@ def persist_forecasts(
         record.humidity = forecast.humidity
         record.wind_speed = forecast.wind_speed
         record.precipitation = forecast.precipitation
+        record.solar_radiation = getattr(forecast, "solar_radiation", None)
         records.append(record)
     return records
 

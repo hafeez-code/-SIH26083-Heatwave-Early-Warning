@@ -47,14 +47,37 @@ def create_app(config_name="default"):
     with app.app_context():
         db.create_all()
         # create_all does not add columns to an existing SQLite database.
-        # This non-destructive upgrade keeps local v0.8 databases usable.
+        # These non-destructive upgrades keep local v0.8+ databases usable.
         if db.engine.dialect.name == "sqlite":
-            columns = {column["name"] for column in inspect(db.engine).get_columns("weather_observation")}
-            if "area_id" not in columns:
+            # v0.8: area_id column on weather_observation
+            wo_columns = {
+                column["name"]
+                for column in inspect(db.engine).get_columns("weather_observation")
+            }
+            if "area_id" not in wo_columns:
                 with db.engine.begin() as connection:
                     connection.exec_driver_sql(
                         "ALTER TABLE weather_observation ADD COLUMN area_id INTEGER REFERENCES area(id)"
                     )
+            # v0.19: solar_radiation on weather_observation
+            if "solar_radiation" not in wo_columns:
+                with db.engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE weather_observation ADD COLUMN solar_radiation REAL"
+                    )
+            # v0.19: solar_radiation on forecast_observation
+            try:
+                fo_columns = {
+                    column["name"]
+                    for column in inspect(db.engine).get_columns("forecast_observation")
+                }
+                if "solar_radiation" not in fo_columns:
+                    with db.engine.begin() as connection:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE forecast_observation ADD COLUMN solar_radiation REAL"
+                        )
+            except Exception:  # noqa: BLE001 – table may not exist yet
+                pass
 
     # ------------------------------------------------------------------ #
     # Prototype CORS (v0.17 development only)                             #

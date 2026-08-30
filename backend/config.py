@@ -9,8 +9,6 @@ import os
 
 # Absolute path to the directory that contains this file (backend/)
 _BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-
 class Config:
     """Base configuration."""
 
@@ -45,9 +43,6 @@ class Config:
         os.environ.get("WEATHER_COLLECTION_INTERVAL", "900")
     )
 
-    # ---------------------------------------------------------------------- #
-    # Heatwave Risk Thresholds (Prototype v0.6)                              #
-    # ---------------------------------------------------------------------- #
     # ---------------------------------------------------------------------- #
     # ML artifacts – generated files are gitignored; never store credentials. #
     # ---------------------------------------------------------------------- #
@@ -97,6 +92,54 @@ class Config:
         "HUMIDITY_EXTREME": 80.0,   # Humidity % adding high risk
         "WIND_STAGNANT": 5.0,       # Wind speed (km/h) increasing risk
         "WIND_BREEZE": 20.0,        # Wind speed (km/h) reducing risk
+    }
+
+    # ---------------------------------------------------------------------- #
+    # Human Thermal Stress Index Thresholds (SIH26083 v0.19)                 #
+    # Based on Rothfusz Heat Index methodology (NWS standard).               #
+    # Heat index values in °C; scores map to 0–100 environmental indicator.  #
+    # PROTOTYPE: Not a clinically validated medical diagnosis.                #
+    # ---------------------------------------------------------------------- #
+    THERMAL_STRESS_THRESHOLDS = {
+        "HI_LOW": 27.0,        # Heat index (°C) below which stress is LOW
+        "HI_MODERATE": 32.0,   # Heat index (°C) for MODERATE stress onset
+        "HI_HIGH": 41.0,       # Heat index (°C) for HIGH stress onset
+        "HI_VERY_HIGH": 54.0,  # Heat index (°C) for VERY HIGH stress onset
+        # Score boundaries for each stress band (0–100 scale)
+        "SCORE_LOW": 15,
+        "SCORE_MODERATE": 35,
+        "SCORE_HIGH": 60,
+        "SCORE_VERY_HIGH": 80,
+        "SCORE_EXTREME": 95,
+        # Wind cooling: subtract from score when wind > threshold
+        "WIND_COOLING_THRESHOLD": 20.0,  # km/h
+        "WIND_COOLING_BONUS": 5,         # score points subtracted
+        # Solar radiation: add to score when radiation > threshold
+        "SOLAR_HIGH_THRESHOLD": 600.0,   # W/m²
+        "SOLAR_SCORE_BONUS": 5,          # score points added
+    }
+
+    # ---------------------------------------------------------------------- #
+    # Mortality / Vulnerability Risk Index (SIH26083 v0.19)                  #
+    # Explicit weights for the transparent weighted-combination formula.      #
+    # PROTOTYPE: not a medically validated mortality probability.             #
+    # ---------------------------------------------------------------------- #
+    MORTALITY_RISK_WEIGHTS = {
+        # Contribution of thermal stress score to the base risk score
+        "W_THERMAL": 0.5,
+        # Contribution of heatwave risk score to the base risk score
+        "W_HEATWAVE": 0.5,
+        # Vulnerability amplification per percentage point of elderly population
+        "W_ELDERLY": 0.8,
+        # Vulnerability amplification per percentage point of children population
+        "W_CHILDREN": 0.4,
+    }
+
+    MORTALITY_RISK_THRESHOLDS = {
+        "SCORE_LOW": 30,       # Scores below this → LOW
+        "SCORE_MODERATE": 55,  # Scores below this → MODERATE
+        "SCORE_HIGH": 75,      # Scores below this → HIGH
+        # Scores at or above HIGH threshold → EXTREME
     }
 
 class DevelopmentConfig(Config):

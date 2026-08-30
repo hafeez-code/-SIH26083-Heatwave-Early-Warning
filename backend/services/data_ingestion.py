@@ -47,6 +47,8 @@ class NormalisedObservation:
     humidity: Optional[float]        # %
     wind_speed: Optional[float]      # km/h
     precipitation: Optional[float]   # mm
+    # Solar radiation – never fabricated; None when provider does not supply it.
+    solar_radiation: Optional[float] = None  # W/m²
 
 
 # --------------------------------------------------------------------------- #
@@ -148,6 +150,11 @@ def _normalise_response(data: dict, latitude: float, longitude: float) -> Normal
         humidity=_safe_float(cw.get("relativehumidity_2m"), "relativehumidity_2m"),
         wind_speed=_safe_float(cw.get("windspeed"), "windspeed"),
         precipitation=_safe_float(cw.get("precipitation"), "precipitation"),
+        # shortwave_radiation is optional; never substitute another value for it.
+        solar_radiation=_safe_float(
+            cw.get("shortwave_radiation") or data.get("shortwave_radiation"),
+            "shortwave_radiation",
+        ),
     )
 
 
@@ -273,6 +280,7 @@ def save_observation(
         humidity=observation.humidity,
         wind_speed=observation.wind_speed,
         precipitation=observation.precipitation,
+        solar_radiation=getattr(observation, "solar_radiation", None),
     )
     db_session.add(record)
     logger.debug("Staged WeatherObservation for (%.4f, %.4f).", observation.latitude, observation.longitude)

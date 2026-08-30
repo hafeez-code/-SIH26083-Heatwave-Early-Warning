@@ -3,6 +3,9 @@ database_models.py – SQLAlchemy ORM models for SIH26083.
 
 Sprint 2: Database foundation – Area model.
 Sprint 3: Weather ingestion – WeatherObservation model added.
+v0.19:   AreaDemographics model, solar_radiation field added.
+         All new columns nullable for backward compatibility.
+         No PII stored – demographics are aggregate area-level only.
 
 Only models needed by the current sprint are defined here.
 """
@@ -35,6 +38,12 @@ class Area(db.Model):
     historical_event_labels = db.relationship(
         "HistoricalEventLabel",
         back_populates="area",
+    )
+    demographics = db.relationship(
+        "AreaDemographics",
+        back_populates="area",
+        uselist=False,  # one-to-one
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -72,6 +81,8 @@ class WeatherObservation(db.Model):
     humidity = db.Column(db.Float, nullable=True)       # %
     wind_speed = db.Column(db.Float, nullable=True)     # km/h
     precipitation = db.Column(db.Float, nullable=True)  # mm
+    # Solar radiation – nullable; never fabricated if provider does not supply it.
+    solar_radiation = db.Column(db.Float, nullable=True)  # W/m²
 
     # Audit field: when this row was written to our DB
     ingested_at = db.Column(
@@ -148,6 +159,8 @@ class ForecastObservation(db.Model):
     humidity = db.Column(db.Float, nullable=True)
     wind_speed = db.Column(db.Float, nullable=True)
     precipitation = db.Column(db.Float, nullable=True)
+    # Solar radiation forecast – nullable; only populated when provider supplies it.
+    solar_radiation = db.Column(db.Float, nullable=True)  # W/m²
     ingested_at = db.Column(
         db.DateTime,
         nullable=False,
@@ -197,4 +210,54 @@ class HistoricalEventLabel(db.Model):
         return (
             f"<HistoricalEventLabel id={self.id} area_id={self.area_id} "
             f"timestamp={self.event_timestamp!r} name={self.label_name!r}>"
+        )
+
+
+class AreaDemographics(db.Model):
+    """Aggregate area-level demographic vulnerability information.
+
+    IMPORTANT: This model stores ONLY population-level aggregates.
+    No personally identifiable information (PII) is stored here.
+    Data should come from authoritative public sources (census, local govt).
+
+    One record per Area (one-to-one relationship enforced by unique constraint).
+    All demographic fields are nullable – an area can exist without demographics.
+    """
+
+    __tablename__ = "area_demographics"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    area_id = db.Column(
+        db.Integer,
+        db.ForeignKey("area.id"),
+        nullable=False,
+        unique=True,  # one record per area
+    )
+
+    # Aggregate population count – purely optional, used for context only.
+    population_total = db.Column(db.Integer, nullable=True)
+
+    # Percentage of population in high-vulnerability age groups (0.0–100.0).
+    # These are AGGREGATE statistics, not individual records.
+    pct_elderly = db.Column(db.Float, nullable=True)   # % aged ≥65
+    pct_children = db.Column(db.Float, nullable=True)  # % aged <18
+
+    # Free-text notes on known local vulnerability factors (e.g. slum density,
+    # outdoor worker proportion). Optional field for SIH demo context.
+    vulnerability_notes = db.Column(db.Text, nullable=True)
+
+    # Audit timestamp
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+    )
+
+    area = db.relationship("Area", back_populates="demographics")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<AreaDemographics id={self.id} area_id={self.area_id} "
+            f"pct_elderly={self.pct_elderly} pct_children={self.pct_children}>"
         )

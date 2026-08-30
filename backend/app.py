@@ -164,27 +164,23 @@ def create_app(config_name="default"):
 
         from services.weather_scheduler import WeatherScheduler
 
-        schedulers: list = []
-        # Attach the list to the app object so host code can stop them later.
         if not hasattr(app, "scheduler_instances"):
-            app.scheduler_instances = schedulers
-        else:
-            # Already initialised – prevent duplicate scheduler threads.
+            app.scheduler_instances = []
+        elif _wrm is None or _wrm == "true":  # only return if already initialised in main worker
             return
 
-        with app.app_context():
-            areas = Area.query.order_by(Area.id.asc()).all()
-
-        if not areas:
-            logger.info("WeatherScheduler auto-start skipped: no Areas in the database.")
-            return
-
-        base_url = app.config.get("WEATHER_API_BASE_URL", "")
-        interval = app.config.get("WEATHER_COLLECTION_INTERVAL", 900)
-        api_key = app.config.get("WEATHER_API_KEY", "")
-        api_timeout = app.config.get("WEATHER_API_TIMEOUT", 10)
-
-        for area in areas:
+        def _start_scheduler_for_area(area: Area) -> None:
+            if not app.config.get("WEATHER_SCHEDULER_ENABLED", False):
+                return
+            _wrm_check = os.environ.get("WERKZEUG_RUN_MAIN")
+            if _wrm_check is not None and _wrm_check != "true":
+                return
+            
+            base_url = app.config.get("WEATHER_API_BASE_URL", "")
+            interval = app.config.get("WEATHER_COLLECTION_INTERVAL", 900)
+            api_key = app.config.get("WEATHER_API_KEY", "")
+            api_timeout = app.config.get("WEATHER_API_TIMEOUT", 10)
+            
             scheduler = WeatherScheduler(
                 latitude=float(area.latitude),
                 longitude=float(area.longitude),
@@ -197,13 +193,20 @@ def create_app(config_name="default"):
                 area_id=int(area.id),
             )
             scheduler.start()
-            schedulers.append(scheduler)
-            logger.info(
-                "WeatherScheduler started for Area %s (%s) at interval %ss.",
-                area.id,
-                area.name,
-                interval,
-            )
+            app.scheduler_instances.append(scheduler)
+            logger.info("WeatherScheduler started dynamically for Area %s.", area.id)
+
+        app.start_scheduler_for_area = _start_scheduler_for_area
+
+        with app.app_context():
+            areas = Area.query.order_by(Area.id.asc()).all()
+
+        if not areas:
+            logger.info("WeatherScheduler auto-start skipped: no Areas in the database.")
+            return
+
+        for area in areas:
+            _start_scheduler_for_area(area)
 
         def _stop_all_schedulers(timeout: float = 5.0) -> None:
             for item in list(getattr(app, "scheduler_instances", [])):

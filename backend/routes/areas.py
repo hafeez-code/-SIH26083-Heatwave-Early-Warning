@@ -12,7 +12,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 
 from models.database_models import Area, AreaDemographics, WeatherObservation, db
 from services.alert_service import list_alerts
@@ -74,6 +74,11 @@ def create_area():
     area = Area(name=name.strip(), latitude=latitude, longitude=longitude)
     db.session.add(area)
     db.session.commit()
+    
+    start_func = getattr(current_app, "start_scheduler_for_area", None)
+    if callable(start_func):
+        start_func(area)
+        
     return jsonify({"status": "success", "data": _area_data(area)}), 201
 
 

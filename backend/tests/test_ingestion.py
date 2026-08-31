@@ -43,6 +43,7 @@ from services.data_ingestion import (  # noqa: E402
     WeatherAPINetworkError,
     WeatherAPITimeoutError,
     WeatherDataError,
+    _find_hourly_index,
     _normalise_response,
     _safe_float,
     fetch_weather,
@@ -66,7 +67,12 @@ def _make_ok_payload(
     relativehumidity_2m=55.0,
     precipitation=0.0,
 ) -> dict:
-    """Return a minimal valid Open-Meteo-style response payload."""
+    """Return a minimal valid Open-Meteo-style response payload.
+
+    Uses the real Open-Meteo structure: humidity and precipitation are placed
+    in the hourly array.  They are also echoed into current_weather to test
+    the backwards-compat fallback path used by legacy mocks.
+    """
     return {
         "latitude": lat,
         "longitude": lon,
@@ -74,8 +80,58 @@ def _make_ok_payload(
             "time": time,
             "temperature": temperature,
             "windspeed": windspeed,
+            # Legacy fallback fields (used by backwards-compat path when hourly
+            # index is not found – kept here so old test expectations still hold)
             "relativehumidity_2m": relativehumidity_2m,
             "precipitation": precipitation,
+        },
+        # Real Open-Meteo hourly arrays – the normaliser prefers these.
+        "hourly": {
+            "time": ["2026-08-28T12:00"],
+            "relativehumidity_2m": [relativehumidity_2m],
+            "precipitation": [precipitation],
+            "shortwave_radiation": [None],
+        },
+    }
+
+
+def _make_real_openmeteo_payload(
+    lat=LAT,
+    lon=LON,
+    cw_time="2026-08-30T11:45",
+    temperature=35.0,
+    windspeed=12.5,
+    humidity=67.0,
+    precipitation=0.2,
+    solar=150.0,
+) -> dict:
+    """Return a realistic Open-Meteo response where hourly resolution is 1h.
+
+    current_weather uses 15-minute resolution; hourly uses whole-hour
+    timestamps.  The normaliser must match on the hour prefix.
+    """
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "current_weather": {
+            "time": cw_time,                   # 15-min resolution: e.g. T11:45
+            "temperature": temperature,
+            "windspeed": windspeed,
+            "winddirection": 270,
+            "is_day": 1,
+            "weathercode": 0,
+            # NOTE: NO humidity/precipitation/solar here — this is the real API
+        },
+        "hourly": {
+            "time": [                           # whole-hour timestamps
+                "2026-08-30T09:00",
+                "2026-08-30T10:00",
+                "2026-08-30T11:00",            # matches cw_time T11:45 on prefix
+                "2026-08-30T12:00",
+            ],
+            "relativehumidity_2m": [80, 75, humidity, 65],
+            "precipitation":       [0.0, 0.0, precipitation, 0.0],
+            "shortwave_radiation": [0.0, 50.0, solar, 200.0],
         },
     }
 
@@ -185,6 +241,101 @@ class TestNormaliseResponse:
         payload["current_weather"]["temperature"] = "n/a"
         obs = _normalise_response(payload, LAT, LON)
         assert obs.temperature is None
+
+
+# ---------------------------------------------------------------------------
+# _find_hourly_index – unit tests
+# ---------------------------------------------------------------------------
+
+class TestFindHourlyIndex:
+    """Verify the hour-prefix timestamp matching used for hourly extraction."""
+
+    def test_exact_match_found(self):
+        """An hourly timestamp that exactly matches the current_weather time."""
+        times = ["2026-08-30T10:00", "2026-08-30T11:00", "2026-08-30T12:00"]
+        assert _find_hourly_index(times, "2026-08-30T11:00") == 1
+
+    def test_prefix_match_found(self):
+        """15-minute current_weather time should match the whole-hour entry."""
+        times = ["2026-08-30T10:00", "2026-08-30T11:00", "2026-08-30T12:00"]
+        assert _find_hourly_index(times, "2026-08-30T11:45") == 1
+
+    def test_no_match_returns_minus_one(self):
+        """When no matching hour exists, -1 is returned (no crash)."""
+        times = ["2026-08-30T10:00", "2026-08-30T11:00"]
+        assert _find_hourly_index(times, "2026-08-30T15:30") == -1
+
+    def test_empty_list_returns_minus_one(self):
+        assert _find_hourly_index([], "2026-08-30T11:00") == -1
+
+    def test_first_element_matched(self):
+        times = ["2026-08-30T09:00", "2026-08-30T10:00"]
+        assert _find_hourly_index(times, "2026-08-30T09:15") == 0
+
+    def test_last_element_matched(self):
+        times = ["2026-08-30T09:00", "2026-08-30T10:00"]
+        assert _find_hourly_index(times, "2026-08-30T10:30") == 1
+
+
+# ---------------------------------------------------------------------------
+# Real Open-Meteo hourly extraction tests
+# ---------------------------------------------------------------------------
+
+class TestRealOpenMeteoHourlyExtraction:
+    """Verify _normalise_response correctly extracts hourly fields from
+    a realistic Open-Meteo response where humidity/precip/solar are NOT
+    in current_weather but only in the hourly arrays."""
+
+    def test_humidity_extracted_from_hourly(self):
+        payload = _make_real_openmeteo_payload(humidity=67.0)
+        obs = _normalise_response(payload, LAT, LON)
+        assert obs.humidity == pytest.approx(67.0)
+
+    def test_precipitation_extracted_from_hourly(self):
+        payload = _make_real_openmeteo_payload(precipitation=0.2)
+        obs = _normalise_response(payload, LAT, LON)
+        assert obs.precipitation == pytest.approx(0.2)
+
+    def test_solar_radiation_extracted_from_hourly(self):
+        payload = _make_real_openmeteo_payload(solar=150.0)
+        obs = _normalise_response(payload, LAT, LON)
+        assert obs.solar_radiation == pytest.approx(150.0)
+
+    def test_temperature_and_wind_from_current_weather(self):
+        payload = _make_real_openmeteo_payload(temperature=35.0, windspeed=12.5)
+        obs = _normalise_response(payload, LAT, LON)
+        assert obs.temperature == pytest.approx(35.0)
+        assert obs.wind_speed == pytest.approx(12.5)
+
+    def test_all_fields_populated(self):
+        payload = _make_real_openmeteo_payload(
+            temperature=36.0, windspeed=10.0,
+            humidity=70.0, precipitation=0.5, solar=200.0
+        )
+        obs = _normalise_response(payload, LAT, LON)
+        assert obs.temperature == pytest.approx(36.0)
+        assert obs.wind_speed == pytest.approx(10.0)
+        assert obs.humidity == pytest.approx(70.0)
+        assert obs.precipitation == pytest.approx(0.5)
+        assert obs.solar_radiation == pytest.approx(200.0)
+
+    def test_no_hourly_timestamp_match_yields_none(self):
+        """If hourly times don't match current_weather time, hourly fields
+        fall back to None (since there is no cw fallback for solar)."""
+        payload = _make_real_openmeteo_payload(cw_time="2026-08-30T23:45")
+        # The hourly array only has times up to 12:00 so there's no match
+        obs = _normalise_response(payload, LAT, LON)
+        # No fallback for the real-API format fields
+        # (they are not in current_weather)
+        assert obs.solar_radiation is None
+
+    def test_solar_none_in_hourly_stays_none(self):
+        """Explicitly null solar radiation in hourly must not become a value."""
+        payload = _make_real_openmeteo_payload(solar=None)
+        # Override the solar slot to None
+        payload["hourly"]["shortwave_radiation"] = [None, None, None, None]
+        obs = _normalise_response(payload, LAT, LON)
+        assert obs.solar_radiation is None
 
 
 # ---------------------------------------------------------------------------

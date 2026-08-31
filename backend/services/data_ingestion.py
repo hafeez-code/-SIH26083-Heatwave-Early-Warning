@@ -96,25 +96,68 @@ def _safe_float(value: object, field: str) -> Optional[float]:
         return None
 
 
+def _find_hourly_index(hourly_times: list, current_time: str) -> int:
+    """Find the hourly array index whose timestamp best matches current_time.
+
+    Open-Meteo's ``current_weather.time`` uses 15-minute resolution
+    (e.g. ``2026-08-30T11:45``) while the ``hourly`` array uses
+    whole-hour timestamps (e.g. ``2026-08-30T11:00``).  We match
+    on the hour prefix (first 13 characters: ``YYYY-MM-DDTHH``).
+
+    Returns -1 if no match is found.
+    """
+    prefix = str(current_time)[:13]  # "YYYY-MM-DDTHH"
+    for idx, t in enumerate(hourly_times):
+        if str(t)[:13] == prefix:
+            return idx
+    return -1
+
+
 def _normalise_response(data: dict, latitude: float, longitude: float) -> NormalisedObservation:
     """Extract and normalise fields from a raw Open-Meteo-style API response.
 
-    The response schema expected::
+    Open-Meteo returns temperature and wind speed inside ``current_weather``
+    but keeps humidity, precipitation, and solar radiation in the ``hourly``
+    arrays only.  This function extracts both sources and merges them into a
+    single NormalisedObservation.
+
+    Accepted response schemas:
+
+    1. Real Open-Meteo response (``current_weather`` + ``hourly`` arrays)::
 
         {
             "latitude": <float>,
             "longitude": <float>,
             "current_weather": {
                 "time": "<ISO-8601>",
-                "temperature": <float>,          # °C
-                "windspeed": <float>,            # km/h
-                "relativehumidity_2m": <float>,  # %  (optional)
-                "precipitation": <float>         # mm (optional)
+                "temperature": <float>,  # °C
+                "windspeed":   <float>,  # km/h
+            },
+            "hourly": {
+                "time":                  ["YYYY-MM-DDTHH:00", ...],
+                "relativehumidity_2m":   [<float>, ...],  # %
+                "precipitation":         [<float>, ...],  # mm
+                "shortwave_radiation":   [<float>, ...],  # W/m² (optional)
             }
         }
 
-    Latitude/longitude from the response override the request coordinates
-    (APIs often snap to the nearest grid point).
+    2. Legacy / test mock format (all fields inside ``current_weather``)::
+
+        {
+            "current_weather": {
+                "time": "...",
+                "temperature": ...,
+                "windspeed": ...,
+                "relativehumidity_2m": ...,  # directly in cw for tests
+                "precipitation": ...,
+            }
+        }
+
+    The hourly lookup always takes priority over direct ``current_weather``
+    fields for humidity / precipitation / solar radiation when both are
+    present.  This ensures real API responses are handled correctly while
+    existing unit-test mocks (which embed these fields in ``current_weather``)
+    continue to work.
 
     Raises
     ------
@@ -142,19 +185,39 @@ def _normalise_response(data: dict, latitude: float, longitude: float) -> Normal
     obs_lat = _safe_float(data.get("latitude"), "latitude") or latitude
     obs_lon = _safe_float(data.get("longitude"), "longitude") or longitude
 
+    # -----------------------------------------------------------------------
+    # Humidity, precipitation, solar radiation
+    # These fields exist in the hourly array in real Open-Meteo responses.
+    # Fall back to current_weather keys for backwards compatibility with
+    # existing test mocks that embed them there.
+    # -----------------------------------------------------------------------
+    hourly = data.get("hourly") or {}
+    hourly_times: list = hourly.get("time") or []
+    hourly_idx = _find_hourly_index(hourly_times, str(timestamp)) if hourly_times else -1
+
+    def _hourly_value(field: str, cw_fallback: str | None = None) -> object:
+        """Return the hourly value at the matched index, or fall back to cw."""
+        hourly_arr = hourly.get(field) or []
+        if hourly_idx >= 0 and hourly_idx < len(hourly_arr):
+            return hourly_arr[hourly_idx]
+        # Fallback: value might be directly in current_weather (test mocks)
+        if cw_fallback:
+            return cw.get(cw_fallback)
+        return None
+
+    humidity_raw = _hourly_value("relativehumidity_2m", cw_fallback="relativehumidity_2m")
+    precipitation_raw = _hourly_value("precipitation", cw_fallback="precipitation")
+    solar_raw = _hourly_value("shortwave_radiation", cw_fallback="shortwave_radiation")
+
     return NormalisedObservation(
         latitude=obs_lat,
         longitude=obs_lon,
         timestamp=str(timestamp),
         temperature=_safe_float(cw.get("temperature"), "temperature"),
-        humidity=_safe_float(cw.get("relativehumidity_2m"), "relativehumidity_2m"),
+        humidity=_safe_float(humidity_raw, "relativehumidity_2m"),
         wind_speed=_safe_float(cw.get("windspeed"), "windspeed"),
-        precipitation=_safe_float(cw.get("precipitation"), "precipitation"),
-        # shortwave_radiation is optional; never substitute another value for it.
-        solar_radiation=_safe_float(
-            cw.get("shortwave_radiation") or data.get("shortwave_radiation"),
-            "shortwave_radiation",
-        ),
+        precipitation=_safe_float(precipitation_raw, "precipitation"),
+        solar_radiation=_safe_float(solar_raw, "shortwave_radiation"),
     )
 
 
@@ -204,7 +267,11 @@ def fetch_weather(
         "latitude": latitude,
         "longitude": longitude,
         "current_weather": "true",
-        "hourly": "relativehumidity_2m,precipitation",
+        # Request humidity, precipitation, and solar radiation from the hourly
+        # array.  Open-Meteo does not include these in current_weather.
+        # shortwave_radiation is optional – the provider may omit it for some
+        # locations/times, which is handled gracefully in _normalise_response.
+        "hourly": "relativehumidity_2m,precipitation,shortwave_radiation",
     }
 
     headers: dict = {}

@@ -14,15 +14,20 @@ from services.prediction import PredictionError, PredictionResult, predict
 prediction_bp = Blueprint("prediction_bp", __name__)
 
 
-def _prediction_data(result: PredictionResult) -> dict[str, Any]:
-    return {
+def _prediction_data(result: PredictionResult, artifact_version: str) -> dict[str, Any]:
+    data = {
         "area_id": result.area_id,
         "forecast_timestamp": result.forecast_timestamp,
         "task": result.task,
         "prediction": result.prediction,
         "probability": result.probability,
+        "model_version": artifact_version,
+        "prototype": True,
         "features": dict(result.feature_values),
     }
+    if result.task == "classification":
+        data["label"] = "HEATWAVE" if result.prediction == 1 else "NO_HEATWAVE"
+    return data
 
 
 def _get_area_from_request():
@@ -172,7 +177,7 @@ def forecast_prediction():
             "task": task,
             "target_column": target_column,
             "artifact_version": artifact_version,
-            "predictions": [_prediction_data(item) for item in predictions],
+            "predictions": [_prediction_data(item, artifact_version) for item in predictions],
             "n_skipped": len(records) - len(predictions),
         },
     })
@@ -294,7 +299,7 @@ def raw_prediction():
             "task": task,
             "target_column": target_column,
             "artifact_version": artifact_version,
-            "predictions": [_prediction_data(item) for item in predictions],
+            "predictions": [_prediction_data(item, artifact_version) for item in predictions],
             "n_skipped": len(records) - len(predictions),
         },
     })

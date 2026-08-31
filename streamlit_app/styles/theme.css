@@ -1,0 +1,369 @@
+/* =========================================================
+   SIH26083 – Heatwave Intelligence Command Center
+   Theme: Premium Weather Intelligence
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ---------- Root palette ---------- */
+:root {
+  /* Deep atmospheric navy/charcoal */
+  --navy-900:  #080c14;
+  --navy-800:  #0d1421;
+  --navy-700:  #131d2e;
+  --navy-600:  #1b283d;
+  --navy-500:  #25354f;
+  
+  --accent-blue: #3b82f6;
+  --accent-cyan: #06b6d4;
+  --accent-teal: #14b8a6;
+
+  /* Risk semantic colors - adjusted for dark mode */
+  --risk-normal:   #34d399;   /* emerald-400 */
+  --risk-watch:    #fbbf24;   /* amber-400   */
+  --risk-warning:  #fb923c;   /* orange-400  */
+  --risk-critical: #f87171;   /* red-400     */
+
+  --text-primary:   #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted:     #64748b;
+
+  --glass-bg:     rgba(13, 20, 33, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-hover:  rgba(255, 255, 255, 0.04);
+  
+  --border-radius: 16px;
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- Global ---------- */
+html, body, .stApp {
+  background: radial-gradient(circle at 50% -20%, #152238 0%, var(--navy-900) 60%) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Remove default Streamlit padding */
+.block-container {
+  padding-top: 1.5rem !important;
+  padding-bottom: 2rem !important;
+  max-width: 1400px !important;
+}
+
+/* ---------- Header Banner ---------- */
+.cmd-header {
+  background: transparent;
+  padding: 1rem 0 1.5rem 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.cmd-header-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+
+.cmd-header-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin-bottom: 0.1rem;
+}
+
+.cmd-header-subtitle {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* ---------- Glassmorphism Panels ---------- */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius);
+  padding: 1.4rem;
+  box-shadow: var(--shadow-card);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.glass-card:hover {
+  background: var(--glass-hover);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- Weather Hero Panel ---------- */
+.weather-hero {
+  background: linear-gradient(180deg, rgba(37,99,235,0.04) 0%, rgba(13,20,33,0.6) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 2.5rem 2.5rem;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.weather-hero-temp {
+  font-size: 5.5rem;
+  font-weight: 300;
+  line-height: 1;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  margin: 0.5rem 0;
+}
+
+.weather-hero-city {
+  font-size: 1.4rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-secondary);
+}
+
+.weather-hero-cond {
+  font-size: 1.3rem;
+  font-weight: 500;
+  color: var(--accent-cyan);
+  margin-bottom: 1rem;
+}
+
+.hero-stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.hero-stat-row:last-child {
+  border-bottom: none;
+}
+.hero-stat-label {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+.hero-stat-val {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* ---------- Hourly Strip ---------- */
+.hourly-container {
+  display: flex;
+  overflow-x: auto;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  scrollbar-width: none; /* Firefox */
+  margin-bottom: 1.5rem;
+}
+.hourly-container::-webkit-scrollbar {
+  display: none;
+}
+.hourly-item {
+  min-width: 90px;
+  text-align: center;
+  padding: 1.2rem 0.5rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+}
+.hourly-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+.hourly-time { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.hourly-temp { font-size: 1.2rem; font-weight: 600; color: #fff; margin: 0.4rem 0; }
+.hourly-precip { font-size: 0.75rem; color: var(--accent-cyan); }
+
+/* ---------- Risk Level Colors ---------- */
+.risk-normal   { color: var(--risk-normal) !important; }
+.risk-watch    { color: var(--risk-watch) !important; }
+.risk-warning  { color: var(--risk-warning) !important; }
+.risk-critical { color: var(--risk-critical) !important; }
+
+.risk-badge {
+  display: inline-block;
+  padding: 0.25em 0.8em;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge-normal   { background: rgba(52, 211, 153, 0.12); color: var(--risk-normal);  border: 1px solid rgba(52,211,153,0.25); }
+.badge-watch    { background: rgba(251, 191, 36, 0.12); color: var(--risk-watch);   border: 1px solid rgba(251,191,36,0.25); }
+.badge-warning  { background: rgba(251, 146, 60, 0.12); color: var(--risk-warning); border: 1px solid rgba(251,146,60,0.25); }
+.badge-critical { background: rgba(248, 113, 113, 0.12); color: var(--risk-critical);border: 1px solid rgba(248,113,113,0.25); }
+
+/* ---------- Alert Cards ---------- */
+.alert-card {
+  border-radius: var(--border-radius);
+  padding: 1.2rem;
+  margin-bottom: 0.75rem;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  border-left: 4px solid;
+}
+
+.alert-warning  { border-color: var(--risk-warning); }
+.alert-watch    { border-color: var(--risk-watch); }
+.alert-info     { border-color: var(--accent-cyan); }
+.alert-critical { border-color: var(--risk-critical); }
+
+/* ---------- Section Titles ---------- */
+.section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--glass-border), transparent);
+}
+
+/* ---------- Streamlit overrides ---------- */
+/* Sidebar */
+section[data-testid="stSidebar"] {
+  background: var(--navy-900) !important;
+  border-right: 1px solid var(--glass-border) !important;
+}
+section[data-testid="stSidebar"] * {
+  color: var(--text-primary) !important;
+}
+
+/* Sidebar Nav Radio */
+div.row-widget.stRadio > div {
+  gap: 0.4rem;
+}
+div.row-widget.stRadio > div > label {
+  padding: 0.6rem 1rem !important;
+  background: transparent !important;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+div.row-widget.stRadio > div > label:hover {
+  background: rgba(255,255,255,0.03) !important;
+}
+div.row-widget.stRadio > div > label[data-checked="true"] {
+  background: rgba(255,255,255,0.08) !important;
+}
+
+/* Streamlit metric */
+div[data-testid="stMetric"] {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1rem;
+}
+div[data-testid="stMetricLabel"] {
+  color: var(--text-muted) !important;
+  font-size: 0.75rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+div[data-testid="stMetricValue"] {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+}
+
+/* Selectbox */
+div[data-baseweb="select"] > div {
+  background: rgba(0,0,0,0.2) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 8px;
+  color: var(--text-primary) !important;
+}
+
+/* Buttons */
+.stButton > button {
+  background: rgba(255,255,255,0.05) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  padding: 0.5rem 1.25rem !important;
+  transition: all 0.2s ease !important;
+}
+.stButton > button:hover {
+  background: rgba(255,255,255,0.1) !important;
+  border-color: rgba(255,255,255,0.2) !important;
+}
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  padding: 0.75rem;
+  text-align: left;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-weight: 600;
+}
+td {
+  padding: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+tr:last-child td {
+  border-bottom: none;
+}
+tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Remove top padding from page content */
+div[data-testid="stVerticalBlock"] > div:first-child {
+  margin-top: 0 !important;
+}
+
+/* Plotly chart dark background */
+.js-plotly-plot .plotly .main-svg {
+  background: transparent !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 4rem 1rem;
+}
+.empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.8; }
+.empty-state-title { font-size: 1.2rem; font-weight: 600; color: var(--text-secondary); }
+
+/* Dividers */
+hr {
+  border: none !important;
+  border-top: 1px solid var(--glass-border) !important;
+  margin: 1.5rem 0 !important;
+}

@@ -95,7 +95,7 @@ def fetch_forecast(
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation",
+        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,shortwave_radiation",
     }
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     url = f"{base_url.rstrip('/')}/forecast"

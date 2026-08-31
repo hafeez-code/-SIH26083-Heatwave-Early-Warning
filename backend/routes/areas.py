@@ -315,6 +315,74 @@ def get_early_warning(area_id: int):
     else:
         overall_status = "NORMAL"
 
+    # -- ML Prediction ------------------------------------------------------
+    from services.prediction import predict, PredictionError
+    from models.database_models import ForecastObservation
+    
+    ml_prediction_data = {
+        "available": False,
+        "prototype": True,
+        "reason": "Unknown"
+    }
+
+    try:
+        # Fetch forecasts
+        forecast_records = (
+            ForecastObservation.query.filter_by(area_id=area.id)
+            .order_by(
+                ForecastObservation.forecast_timestamp.asc(),
+                ForecastObservation.id.asc(),
+            )
+            .all()
+        )
+        if not forecast_records:
+            ml_prediction_data["reason"] = "No stored forecast available"
+        else:
+            records_dicts = [
+                {
+                    "area_id": record.area_id,
+                    "forecast_timestamp": record.forecast_timestamp,
+                    "temperature": record.temperature,
+                    "humidity": record.humidity,
+                    "wind_speed": record.wind_speed,
+                    "precipitation": record.precipitation,
+                }
+                for record in forecast_records
+            ]
+
+            artifact_dir = current_app.config.get("ML_ARTIFACT_DIR", "artifacts/models")
+            artifact_version = current_app.config.get("ML_ARTIFACT_VERSION", "v0.16")
+            
+            predictions = predict(
+                records_dicts,
+                artifact_dir=artifact_dir,
+                task="classification",
+                target_column="validated_heatwave_event",
+                artifact_version=artifact_version,
+            )
+            
+            if not predictions:
+                ml_prediction_data["reason"] = "Insufficient valid forecast data for feature engineering"
+            else:
+                first_pred = predictions[0]
+                label = "HEATWAVE" if first_pred.prediction == 1 else "NO_HEATWAVE"
+                ml_prediction_data = {
+                    "available": True,
+                    "prototype": True,
+                    "model_version": artifact_version,
+                    "prediction": first_pred.prediction,
+                    "label": label,
+                    "probability": first_pred.probability,
+                    "forecast_timestamp": first_pred.forecast_timestamp,
+                }
+                
+    except PredictionError as exc:
+        ml_prediction_data["reason"] = f"ML Service Unavailable"
+        logger.warning("ML prediction unavailable for area %s: %s", area_id, exc)
+    except Exception as exc:  # noqa: BLE001
+        ml_prediction_data["reason"] = "Unexpected ML failure"
+        logger.exception("Unexpected error generating ML prediction for area %s", area_id)
+
     # -- Response -----------------------------------------------------------
     response_data: dict[str, Any] = {
         "area_id": area.id,
@@ -347,6 +415,7 @@ def get_early_warning(area_id: int):
         "overall_status": overall_status,
         "highest_risk_level": highest,
         "has_active_alerts": has_active_alerts,
+        "ml_prediction": ml_prediction_data,
     }
 
     return jsonify({"status": "success", "data": response_data})

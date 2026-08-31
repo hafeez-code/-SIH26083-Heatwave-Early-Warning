@@ -70,6 +70,7 @@ def app():
     db.init_app(app)
     with app.app_context():
         db.create_all()
+        # pyrefly: ignore [unexpected-keyword]
         db.session.add(Area(name="Delhi", latitude=28.6, longitude=77.2))
         db.session.commit()
         yield app

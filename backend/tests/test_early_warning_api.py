@@ -28,7 +28,7 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
-from models.database_models import Area, AreaDemographics, WeatherObservation, db
+from models.database_models import Area, AreaDemographics, WeatherObservation, ForecastObservation, db
 from routes.areas import areas_bp
 from routes.alerts import alerts_bp
 from services.alert_service import get_default_store
@@ -295,6 +295,91 @@ class TestRiskLevelCorrectness:
         _add_observation(app, area_id, temperature=25.0, humidity=40.0)
         data = client.get(f"/api/areas/{area_id}/early-warning").get_json()["data"]
         assert data["overall_status"] in ("NORMAL", "WATCH")
+
+    def test_alert_generation_does_not_crash_pipeline(self, app, client):
+        area_id = _create_area(app, name="Hyderabad")
+        _add_observation(app, area_id, temperature=45.0, humidity=80.0)
+        data = client.get(f"/api/areas/{area_id}/early-warning").get_json()["data"]
+        assert data["overall_status"] == "CRITICAL"
+
+
+# ---------------------------------------------------------------------------
+# ML Prediction Integration
+# ---------------------------------------------------------------------------
+
+def _add_forecast_history(app, area_id):
+    with app.app_context():
+        for i in range(3):
+            obs = ForecastObservation(
+                area_id=area_id,
+                forecast_timestamp=f"2026-08-28T1{2+i}:00",
+                temperature=38.0,
+                humidity=60.0,
+                wind_speed=10.0,
+                precipitation=0.0,
+                solar_radiation=0.0
+            )
+            db.session.add(obs)
+        db.session.commit()
+
+class TestMLIntegration:
+    def test_early_warning_with_ml_prediction(self, app, client):
+        area_id = _create_area(app)
+        _add_observation(app, area_id)
+        _add_forecast_history(app, area_id)
+        
+        resp = client.get(f"/api/areas/{area_id}/early-warning")
+        assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        
+        assert "ml_prediction" in data
+        ml = data["ml_prediction"]
+        assert ml["available"] is True
+        assert ml["prototype"] is True
+        assert ml["model_version"] == "v0.16"
+        assert "prediction" in ml
+        assert "probability" in ml
+        assert "label" in ml
+
+    def test_early_warning_no_stored_forecast(self, app, client):
+        area_id = _create_area(app)
+        _add_observation(app, area_id)
+        # We don't add forecast
+        
+        resp = client.get(f"/api/areas/{area_id}/early-warning")
+        assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        
+        # Deterministic risk still returned
+        assert "heatwave_risk" in data
+        assert "thermal_stress" in data
+        
+        assert "ml_prediction" in data
+        ml = data["ml_prediction"]
+        assert ml["available"] is False
+        assert "No stored forecast" in ml["reason"]
+
+    def test_early_warning_ml_prediction_failure_handled(self, app, client, monkeypatch):
+        area_id = _create_area(app)
+        _add_observation(app, area_id)
+        _add_forecast_history(app, area_id)
+        
+        from services.prediction import PredictionError
+        def mock_predict(*args, **kwargs):
+            raise PredictionError("Mocked failure")
+        monkeypatch.setattr("services.prediction.predict", mock_predict)
+        
+        resp = client.get(f"/api/areas/{area_id}/early-warning")
+        assert resp.status_code == 200  # does not crash with 500
+        data = resp.get_json()["data"]
+        
+        # Deterministic risk still returned
+        assert "heatwave_risk" in data
+        
+        assert "ml_prediction" in data
+        ml = data["ml_prediction"]
+        assert ml["available"] is False
+        assert ml["reason"] == "ML Service Unavailable"
 
 
 # ---------------------------------------------------------------------------

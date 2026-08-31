@@ -168,6 +168,33 @@ class WeatherScheduler:
                         exc_info=True,
                     )
 
+            # Phase 3: Forecast Ingestion
+            if self.area_id is not None:
+                try:
+                    from services.forecast_ingestion import fetch_forecast, persist_forecasts
+                    forecasts = fetch_forecast(
+                        latitude=self.latitude,
+                        longitude=self.longitude,
+                        base_url=self.base_url,
+                        api_key=self.api_key,
+                        timeout=self.api_timeout,
+                    )
+                    persist_forecasts(forecasts, self.area_id, self.db_session)
+                    self.db_session.commit()
+                    logger.info("WeatherScheduler: forecast ingested successfully for area %s.", self.area_id)
+                except Exception:
+                    # Forecast failure must not corrupt the current observation cycle
+                    try:
+                        self.db_session.rollback()
+                    except Exception:  # pragma: no cover
+                        pass
+                    logger.warning(
+                        "WeatherScheduler: forecast ingestion failed for area %s; "
+                        "current observation was preserved.",
+                        self.area_id,
+                        exc_info=True,
+                    )
+
             return True
 
         except IngestionError as exc:

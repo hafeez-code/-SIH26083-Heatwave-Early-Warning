@@ -34,6 +34,7 @@ def _payload(times=None):
             "relative_humidity_2m": [60.0, 61.0],
             "wind_speed_10m": [10.0, 11.0],
             "precipitation": [0.0, 0.2],
+            "shortwave_radiation": [50.0, 60.0],
         }
     }
 
@@ -70,8 +71,8 @@ def _area(app, name, lat, lon):
 def test_normalises_open_meteo_hourly_data_and_rejects_malformed_payloads():
     forecasts = _normalise_forecast_response(_payload())
     assert forecasts == [
-        NormalisedForecast("2026-08-29T12:00", 39.0, 60.0, 10.0, 0.0),
-        NormalisedForecast("2026-08-29T13:00", 40.0, 61.0, 11.0, 0.2),
+        NormalisedForecast("2026-08-29T12:00", 39.0, 60.0, 10.0, 0.0, 50.0),
+        NormalisedForecast("2026-08-29T13:00", 40.0, 61.0, 11.0, 0.2, 60.0),
     ]
     with pytest.raises(WeatherDataError, match="hourly"):
         _normalise_forecast_response({})
@@ -108,7 +109,7 @@ def test_persistence_is_area_linked_idempotent_and_generates_features(app):
         persist_forecasts(forecasts, first_area, db.session)
         persist_forecasts([forecasts[0]], second_area, db.session)
         db.session.commit()
-        persist_forecasts([NormalisedForecast(forecasts[0].forecast_timestamp, 41, 62, 12, 0)], first_area, db.session)
+        persist_forecasts([NormalisedForecast(forecasts[0].forecast_timestamp, 41, 62, 12, 0, 70)], first_area, db.session)
         db.session.commit()
         first_records = ForecastObservation.query.filter_by(area_id=first_area).all()
         assert len(first_records) == 2
@@ -156,8 +157,8 @@ def test_forecast_api_validates_area_and_keeps_areas_separate(app):
     assert client.get(f"/api/weather/forecast?area_id={first_area}&stored=true").status_code == 404
 
     with app.app_context():
-        persist_forecasts([NormalisedForecast("2026-08-29T12:00", 39, 60, 10, 0)], first_area, db.session)
-        persist_forecasts([NormalisedForecast("2026-08-29T12:00", 35, 70, 8, 1)], second_area, db.session)
+        persist_forecasts([NormalisedForecast("2026-08-29T12:00", 39, 60, 10, 0, 50)], first_area, db.session)
+        persist_forecasts([NormalisedForecast("2026-08-29T12:00", 35, 70, 8, 1, 40)], second_area, db.session)
         db.session.commit()
     first = client.get(f"/api/weather/forecast?area_id={first_area}&stored=true").get_json()
     second = client.get(f"/api/weather/forecast?area_id={second_area}&stored=true").get_json()

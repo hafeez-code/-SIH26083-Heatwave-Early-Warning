@@ -89,3 +89,34 @@ def clear_alerts():
             "message": "Alert store cleared.",
         }
     )
+@alerts_bp.route("/api/alerts/test", methods=["POST"])
+def create_test_alert():
+    """Create a synthetic HIGH-risk alert for local UI/demo testing."""
+    from datetime import datetime, timezone
+    from services.alert_service import evaluate_alert_from_risk_assessment
+
+    alert = evaluate_alert_from_risk_assessment(
+        area_id=1,
+        risk_level="HIGH",
+        risk_score=70,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        factors=[
+            "Synthetic demo alert",
+            "High heatwave risk condition",
+        ],
+    )
+
+    if alert is None:
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Test alert could not be created.",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "status": "success",
+            "data": alert_to_dict(alert),
+        }
+    )

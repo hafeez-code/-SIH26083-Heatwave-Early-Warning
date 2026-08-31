@@ -207,6 +207,76 @@ class TestCollectOnce:
 
 
 # ---------------------------------------------------------------------------
+# Forecast integration tests
+# ---------------------------------------------------------------------------
+
+class TestForecastIngestionIntegration:
+    
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
+    @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
+    @patch("services.forecast_ingestion.fetch_forecast")
+    @patch("services.forecast_ingestion.persist_forecasts")
+    def test_forecast_fetched_and_persisted_when_area_id_present(
+        self, mock_persist_forecasts, mock_fetch_forecast, mock_fetch, mock_pipeline, mock_session
+    ):
+        """Test 8 - Scheduler calls forecast ingestion after current-weather collection."""
+        scheduler = WeatherScheduler(
+            latitude=LAT,
+            longitude=LON,
+            interval=INTERVAL,
+            base_url=BASE_URL,
+            db_session=mock_session,
+            api_key="",
+            api_timeout=5,
+            area_id=1,
+        )
+        
+        mock_fetch_forecast.return_value = ["mock_forecast"]
+        
+        result = scheduler.collect_once()
+        assert result is True
+        
+        # Verify forecast was fetched
+        mock_fetch_forecast.assert_called_once_with(
+            latitude=LAT,
+            longitude=LON,
+            base_url=BASE_URL,
+            api_key="",
+            timeout=5,
+        )
+        # Verify forecast was persisted
+        mock_persist_forecasts.assert_called_once_with(["mock_forecast"], 1, mock_session)
+        # Expect two commits (one for observation, one for forecast)
+        assert mock_session.commit.call_count == 2
+        
+    @patch("services.weather_scheduler.persist_observation_and_risk", return_value=(MagicMock(), MagicMock()))
+    @patch("services.weather_scheduler.fetch_weather", return_value=_SAMPLE_OBS)
+    @patch("services.forecast_ingestion.fetch_forecast")
+    def test_forecast_failure_does_not_destroy_current_observation(
+        self, mock_fetch_forecast, mock_fetch, mock_pipeline, mock_session
+    ):
+        """Test 9 - Forecast ingestion failure does not destroy the current-weather observation."""
+        scheduler = WeatherScheduler(
+            latitude=LAT,
+            longitude=LON,
+            interval=INTERVAL,
+            base_url=BASE_URL,
+            db_session=mock_session,
+            area_id=1,
+        )
+        
+        mock_fetch_forecast.side_effect = Exception("Forecast API down")
+        
+        result = scheduler.collect_once()
+        assert result is True
+        
+        # The current observation commit still happens
+        assert mock_session.commit.call_count == 1
+        # The uncommitted forecast transaction is rolled back
+        mock_session.rollback.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # Scheduler threading tests
 # ---------------------------------------------------------------------------
 
